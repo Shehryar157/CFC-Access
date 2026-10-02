@@ -1,0 +1,111 @@
+"""Research helpers: find the game window, press keys in it, screenshot it.
+
+Usage:
+  python tools/win.py shot [out.png]        screenshot the game window
+  python tools/win.py keys down down enter  press keys (with a pause between)
+"""
+import ctypes
+import sys
+import time
+from ctypes import wintypes
+
+sys.path.insert(0, __file__.rsplit("tools", 1)[0])
+from cfcaccess import game as game_mod  # noqa: E402
+
+user32 = ctypes.WinDLL("user32", use_last_error=True)
+ctypes.windll.shcore.SetProcessDpiAwareness(2)  # real pixel coordinates
+
+# Scan codes (what the keyboard hardware sends). Arrows etc. are "extended"
+# keys, which the hardware sends with an extra E0 prefix byte.
+SCAN = {
+    "esc": (0x01, False), "enter": (0x1C, False), "space": (0x39, False),
+    "backspace": (0x0E, False), "tab": (0x0F, False),
+    "up": (0x48, True), "down": (0x50, True), "left": (0x4B, True), "right": (0x4D, True),
+    "pgup": (0x49, True), "pgdn": (0x51, True),
+    "z": (0x2C, False), "x": (0x2D, False), "c": (0x2E, False), "v": (0x2F, False),
+    "a": (0x1E, False), "s": (0x1F, False), "d": (0x20, False), "w": (0x11, False),
+    "q": (0x10, False), "e": (0x12, False), "f1": (0x3B, False),
+}
+
+KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE = 0x1, 0x2, 0x8
+
+
+class KEYBDINPUT(ctypes.Structure):
+    _fields_ = [("wVk", wintypes.WORD), ("wScan", wintypes.WORD), ("dwFlags", wintypes.DWORD),
+                ("time", wintypes.DWORD), ("dwExtraInfo", ctypes.c_size_t)]
+
+
+class INPUT(ctypes.Structure):
+    class _U(ctypes.Union):
+        _fields_ = [("ki", KEYBDINPUT), ("pad", ctypes.c_byte * 32)]
+    _anonymous_ = ("u",)
+    _fields_ = [("type", wintypes.DWORD), ("u", _U)]
+
+
+def find_window(pid):
+    found = []
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def callback(hwnd, _):
+        owner = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+        if owner.value == pid and user32.IsWindowVisible(hwnd):
+            found.append(hwnd)
+        return True
+
+    user32.EnumWindows(callback, 0)
+    return found[0] if found else None
+
+
+def focus(hwnd):
+    # Windows only lets the foreground app hand focus around; tapping Alt
+    # first is the usual workaround for a background script.
+    user32.keybd_event(0x12, 0, 0, 0)
+    user32.keybd_event(0x12, 0, KEYEVENTF_KEYUP, 0)
+    user32.SetForegroundWindow(hwnd)
+    time.sleep(0.2)
+
+
+def _send(scan, extended, up):
+    flags = KEYEVENTF_SCANCODE | (KEYEVENTF_EXTENDEDKEY if extended else 0) | (KEYEVENTF_KEYUP if up else 0)
+    inp = INPUT(type=1)
+    inp.ki = KEYBDINPUT(0, scan, flags, 0, 0)
+    user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
+
+
+def press(name, hold=0.08):
+    scan, extended = SCAN[name]
+    _send(scan, extended, False)
+    time.sleep(hold)  # games poll input once per frame, so hold for a few frames
+    _send(scan, extended, True)
+
+
+def screenshot(hwnd, path):
+    from PIL import ImageGrab
+    rect = wintypes.RECT()
+    user32.GetWindowRect(hwnd, ctypes.byref(rect))
+    ImageGrab.grab(bbox=(rect.left, rect.top, rect.right, rect.bottom), all_screens=True).save(path)
+    return path
+
+
+def game_window():
+    game = game_mod.try_attach()
+    if game is None:
+        sys.exit("game not running")
+    hwnd = find_window(game.pid)
+    if hwnd is None:
+        sys.exit("game window not found")
+    return game, hwnd
+
+
+if __name__ == "__main__":
+    _, hwnd = game_window()
+    cmd = sys.argv[1]
+    if cmd == "shot":
+        focus(hwnd)
+        print(screenshot(hwnd, sys.argv[2] if len(sys.argv) > 2 else "scratch/shot.png"))
+    elif cmd == "keys":
+        focus(hwnd)
+        for key in sys.argv[2:]:
+            press(key)
+            time.sleep(0.4)
