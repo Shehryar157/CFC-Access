@@ -58,6 +58,8 @@ def find_window(pid):
 
 
 def focus(hwnd):
+    global _last_hwnd
+    _last_hwnd = hwnd
     # Windows only lets the foreground app hand focus around; tapping Alt
     # first is the usual workaround for a background script.
     user32.keybd_event(0x12, 0, 0, 0)
@@ -73,7 +75,13 @@ def _send(scan, extended, up):
     user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
 
 
+_last_hwnd = None
+
+
 def press(name, hold=0.08):
+    # Key presses go to whatever window is in front, so make sure it's the game.
+    if _last_hwnd and user32.GetForegroundWindow() != _last_hwnd:
+        focus(_last_hwnd)
     scan, extended = SCAN[name]
     _send(scan, extended, False)
     time.sleep(hold)  # games poll input once per frame, so hold for a few frames

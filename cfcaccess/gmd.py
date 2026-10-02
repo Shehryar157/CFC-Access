@@ -12,7 +12,7 @@ Layout (version 0x00010302):
   strings: string block, zero-terminated UTF-8 text, in index order
 
 Usage:
-  python tools/gmd.py <file> [search text]
+  python -m cfcaccess.gmd <file> [search text]
 """
 import struct
 import sys
@@ -20,11 +20,16 @@ import sys
 
 def read_gmd(path):
     """Return a list of (key, text) pairs in the file's order."""
-    data = open(path, "rb").read()
+    with open(path, "rb") as f:
+        return parse_gmd(f.read())
+
+
+def parse_gmd(data):
+    """Same as read_gmd, from the file's bytes."""
     magic, version, lang, _unk, n_keys, n_strings, key_size, str_size, name_len = \
         struct.unpack_from("<4sIIQIIIII", data, 0)
     if magic != b"GMD\0":
-        raise ValueError(f"{path}: not a GMD file")
+        raise ValueError("not a GMD file")
     pos = 0x28 + name_len + 1
     entries = []
     for i in range(n_keys):

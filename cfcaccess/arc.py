@@ -11,8 +11,8 @@ Layout:
   data: each file compressed with zlib
 
 Usage:
-  python tools/arc.py list <file.arc>
-  python tools/arc.py extract <file.arc> <out_dir>
+  python -m cfcaccess.arc list <file.arc>
+  python -m cfcaccess.arc extract <file.arc> <out_dir>
 """
 import os
 import struct
