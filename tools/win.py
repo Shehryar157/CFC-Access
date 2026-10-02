@@ -81,10 +81,27 @@ def press(name, hold=0.08):
 
 
 def screenshot(hwnd, path):
-    from PIL import ImageGrab
+    """Capture the window with PrintWindow(PW_RENDERFULLCONTENT).
+
+    A plain screen grab often returns black for DirectX games; this flag asks
+    the desktop compositor for the window's real image instead.
+    """
+    from PIL import Image
+    gdi32 = ctypes.windll.gdi32
     rect = wintypes.RECT()
-    user32.GetWindowRect(hwnd, ctypes.byref(rect))
-    ImageGrab.grab(bbox=(rect.left, rect.top, rect.right, rect.bottom), all_screens=True).save(path)
+    user32.GetClientRect(hwnd, ctypes.byref(rect))
+    w, h = rect.right, rect.bottom
+    hdc_window = user32.GetDC(hwnd)
+    hdc = gdi32.CreateCompatibleDC(hdc_window)
+    bmp = gdi32.CreateCompatibleBitmap(hdc_window, w, h)
+    gdi32.SelectObject(hdc, bmp)
+    user32.PrintWindow(hwnd, hdc, 3)  # PW_CLIENTONLY | PW_RENDERFULLCONTENT
+    buf = ctypes.create_string_buffer(w * h * 4)
+    gdi32.GetBitmapBits(bmp, len(buf), buf)
+    gdi32.DeleteObject(bmp)
+    gdi32.DeleteDC(hdc)
+    user32.ReleaseDC(hwnd, hdc_window)
+    Image.frombuffer("RGBA", (w, h), buf, "raw", "BGRA", 0, 1).convert("RGB").save(path)
     return path
 
 

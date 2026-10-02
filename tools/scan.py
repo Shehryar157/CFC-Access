@@ -48,25 +48,47 @@ def describe(game, address):
     return f"{address:#x}"
 
 
+def detect_main_menu(hwnd):
+    """Read the main menu cursor from a screenshot: the highlighted row is teal."""
+    from PIL import Image
+    im = Image.open(win.screenshot(hwnd, "scratch/detect.png"))
+    lit = [i for i in range(6) if im.getpixel((215, int(156 + 53.3 * i)))[2] > 90]
+    if len(lit) != 1:
+        sys.exit(f"could not see the cursor (lit rows {lit}); see scratch/detect.png")
+    return lit[0]
+
+
+def is_value(step):
+    return step == "?" or step.lstrip("-").isdigit()
+
+
 def main(spec):
     game, hwnd = win.game_window()
     steps = spec.split()
-    values = [int(s) for s in steps if s.lstrip("-").isdigit()]
+    values = []
     win.focus(hwnd)
 
     first = None
     cands = {}  # (type, region start) -> numpy array of element indices
     for step in steps:
-        if not step.lstrip("-").isdigit():
+        if not is_value(step):
             win.press(step)
             time.sleep(0.5)  # let menu animations finish
             continue
-        value = int(step)
+        # "?" means: don't trust the key presses, look at the screen.
+        value = detect_main_menu(hwnd) if step == "?" else int(step)
+        values.append(value)
+        print(f"value {value}")
         t0 = time.time()
         if first is None:
             first = (value, snapshot(game))
             total = sum(len(b) for b in first[1].values())
             print(f"snapshot 1: {len(first[1])} regions, {total / 2**20:.0f} MB, {time.time() - t0:.1f}s")
+            continue
+        if first[1] is not None and value == first[0]:
+            # Same value as the first snapshot: comparing would keep millions
+            # of unchanged spots. Wait for a change before the first filter.
+            print("value unchanged; waiting for a change before filtering")
             continue
         if first[1] is not None:
             v0, snap0 = first
