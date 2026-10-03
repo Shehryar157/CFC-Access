@@ -702,6 +702,48 @@ def match_setup(reader, obj):
     return View(title, _int(reader, obj + 0x324), rows)
 
 
+# ---- Online > Custom Match > Create Lobby ----
+#   +0x324 row cursor, +0x32C + 4*row value. Game: 0 = Any, then the ten
+#   games in Select Game order. Comment skips "Any" (value 0 = message 01).
+LOBBY_ROWS = [  # label, help, message pattern for the value (None = special)
+    ("GAME_TITLE", "HELP_GAME_TITLE", None),
+    ("GAME_VERSION", "HELP_GAME_VERSION", None),
+    ("LOBBY_AREA", "HELP_LOBBY_AREA", "LOBBY_AREA_{:02d}"),
+    ("LOBBY_TITLE", "HELP_LOBBY_TITLE", "LOBBY_TITLE_{:02d}+1"),
+    ("LOBBY_EVENT", "HELP_LOBBY_EVENT", "LOBBY_EVENT_{:02d}"),
+    ("LOBBY_SPMOVE", "HELP_LOBBY_SPMOVE", "LOBBY_SPMOVE_{:02d}"),
+    ("LOBBY_ROUND", "HELP_LOBBY_ROUND", "LOBBY_ROUND_{:02d}"),
+    ("LOBBY_NUM", "HELP_LOBBY_NUM", "LOBBY_NUM_{:02d}"),
+    ("LOBBY_PERM", "HELP_LOBBY_PERM", "LOBBY_PERM_{:02d}"),
+    ("LOBBY_PASS", "HELP_LOBBY_PASS", "LOBBY_PASS_{:02d}"),
+]
+
+
+def create_lobby(reader, obj):
+    msg = reader.msg
+    cursor = _int(reader, obj + 0x324)
+    values = [_int(reader, obj + 0x32C + 4 * i) for i in range(len(LOBBY_ROWS))]
+    game = values[0]
+    rows = []
+    for i, (label, help_key, pattern) in enumerate(LOBBY_ROWS):
+        v = values[i]
+        if i == 0:
+            text = msg.get("GAME_NAME_ANY") if game == 0 else msg.get(f"GAME_NAME_S{game - 1:02d}")
+        elif i == 1:
+            if game == 0:
+                text = msg.get("GAME_VERSION_ANY")
+            else:
+                versions = GAMES[(game - 1) % len(GAMES)]
+                title, region, rom = versions[0] if len(versions) == 1 else versions[v % len(versions)]
+                text = f"{msg.get('GAME_VERSION_J' if region == 'J' else 'GAME_VERSION_E')} {rom}"
+        elif pattern.endswith("+1"):
+            text = msg.get(pattern[:-2].format(v + 1), f"value {v}")
+        else:
+            text = msg.get(pattern.format(v), f"value {v}")
+        rows.append(Row(msg.get(label), text, msg.get(help_key)))
+    return View(msg.get("CREATE_LOBBY"), cursor, rows)
+
+
 # ---- Yes/No dialogs ("Exit the game?") ----
 #   +0x360 question message, +0x324 button count, +0x32C + 4*i button
 #   messages (36 = "Yes", 37 = "No"), +0x37C cursor (0 = first button)
@@ -759,6 +801,12 @@ SCREENS = {
     0x140530C48: music_tracks,
     0x14052DF70: online_menu,
     0x14052D4B0: match_setup,
+    0x1405293D0: create_lobby,
+    0x140529A28: fixed_list("CUSTOM_MATCH", [
+        ("CREATE_LOBBY", "HELP_CREATE_LOBBY"),
+        ("JOIN_LOBBY", "HELP_JOIN_LOBBY"),
+        ("SEARCH_LOBBY_ID", "HELP_SEARCH_LOBBY_ID"),
+    ]),
     0x14052A2D0: None,  # drawing helper of the picture viewer
 }
 
