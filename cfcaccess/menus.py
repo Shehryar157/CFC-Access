@@ -36,6 +36,7 @@ IGNORED_CLASSES = {
     0x14052F6A0,  # pause menu logic object (briefly listed while closing)
     0x1405A5660,  # online helper layer above the leaderboard
     0x14020B8B0,  # in-game helper layer above the pause menu
+    0x1405A6150,  # helper layer that can sit above in-game dialogs
     # Appear together with the pause menu; probably its parts (to verify).
     0x1405314F0, 0x14052AE58, 0x14052F8E8,
     # Training mode displays (damage/combo counters, hitboxes, input log).
