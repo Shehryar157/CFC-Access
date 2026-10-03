@@ -569,6 +569,38 @@ def credits(reader, obj):
                      "Press Backspace to go back.")])
 
 
+# ---- Museum > Gallery (choose a collection of artwork) ----
+#   +0x32C selected entry, +0x330 count (11): 0 = the collection itself,
+#   then the ten games in Select Game order. Left/Right change it.
+def gallery_select(reader, obj):
+    msg = reader.msg
+    sel, count = _int(reader, obj + 0x32C), _int(reader, obj + 0x330)
+    if not 0 <= sel < count <= 16:
+        return None
+    name = msg.get("GAME_NAME_E") if sel == 0 else GAMES[(sel - 1) % len(GAMES)][-1][0]
+    return View(msg.get("GALLERY"), 0, [Row("", f"{name}, {sel + 1} of {count}", msg.get("HELP_GALLERY"))])
+
+
+# ---- Museum > Gallery > picture viewer ----
+#   +0x320 picture number (from 0), +0x324 number of pictures.
+# Ctrl / right Ctrl: previous / next. The caption ("001. Main Key Art
+# (BENGUS)") is drawn from a text pool we can't follow reliably yet.
+GALLERY_SELECT_CLASS = 0x14052DB10
+
+
+def gallery_viewer(reader, obj):
+    msg = reader.msg
+    pic, count = _int(reader, obj + 0x320), _int(reader, obj + 0x324)
+    if not 0 <= pic < count <= 2000:
+        return None
+    title = msg.get("GALLERY")
+    select = reader.find_layer(GALLERY_SELECT_CLASS)
+    if select:
+        sel = _int(reader, select + 0x32C)
+        title += ": " + (msg.get("GAME_NAME_E") if sel == 0 else GAMES[(sel - 1) % len(GAMES)][-1][0])
+    return View(title, 0, [Row("", f"Picture {pic + 1} of {count}")])
+
+
 # ---- Yes/No dialogs ("Exit the game?") ----
 #   +0x360 question message, +0x324 button count, +0x32C + 4*i button
 #   messages (36 = "Yes", 37 = "No"), +0x37C cursor (0 = first button)
@@ -620,6 +652,9 @@ SCREENS = {
     0x140528070: award_stats,
     0x14052EC50: pc_settings,
     0x1405297F8: credits,
+    0x14052DB10: gallery_select,
+    0x14052A090: gallery_viewer,
+    0x14052A2D0: None,  # drawing helper of the picture viewer
 }
 
 MISS_LIMIT = 6  # invalid reads in a row (at 20 a second) before a screen counts as gone
@@ -716,9 +751,9 @@ class MenuReader:
         return None
 
     def view(self, obj, cls):
-        resolve = SCREENS.get(cls)
-        if resolve is not None:
-            return resolve(self, obj)
+        if cls in SCREENS:
+            resolve = SCREENS[cls]
+            return resolve(self, obj) if resolve else HIDDEN
         # Unknown screen: find a plausible cursor and count, and log the class
         # so the screen can be added to SCREENS.
         for off in GUESS_CURSOR_OFFSETS:
