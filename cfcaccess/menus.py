@@ -719,29 +719,35 @@ LOBBY_ROWS = [  # label, help, message pattern for the value (None = special)
 ]
 
 
-def create_lobby(reader, obj):
-    msg = reader.msg
-    cursor = _int(reader, obj + 0x324)
-    values = [_int(reader, obj + 0x32C + 4 * i) for i in range(len(LOBBY_ROWS))]
-    game = values[0]
-    rows = []
-    for i, (label, help_key, pattern) in enumerate(LOBBY_ROWS):
-        v = values[i]
-        if i == 0:
-            text = msg.get("GAME_NAME_ANY") if game == 0 else msg.get(f"GAME_NAME_S{game - 1:02d}")
-        elif i == 1:
-            if game == 0:
-                text = msg.get("GAME_VERSION_ANY")
+def lobby_settings(title_key, n_rows, searching):
+    """Resolver for Create Lobby (searching=False) or Join Lobby (True).
+
+    Join Lobby is a search filter: "Any" comment and "Either" version are
+    real choices there, while Create Lobby's comment list skips "Any".
+    """
+    def resolve(reader, obj):
+        msg = reader.msg
+        values = [_int(reader, obj + 0x32C + 4 * i) for i in range(n_rows)]
+        game = values[0]
+        rows = []
+        for i, (label, help_key, pattern) in enumerate(LOBBY_ROWS[:n_rows]):
+            v = values[i]
+            if i == 0:
+                text = msg.get("GAME_NAME_ANY") if game == 0 else msg.get(f"GAME_NAME_S{game - 1:02d}")
+            elif i == 1:
+                if game == 0 or (searching and v == 2):
+                    text = msg.get("GAME_VERSION_ANY")
+                else:
+                    versions = GAMES[(game - 1) % len(GAMES)]
+                    _, region, rom = versions[0] if len(versions) == 1 else versions[v % len(versions)]
+                    text = f"{msg.get('GAME_VERSION_J' if region == 'J' else 'GAME_VERSION_E')} {rom}"
+            elif pattern.endswith("+1"):
+                text = msg.get(pattern[:-2].format(v if searching else v + 1), f"value {v}")
             else:
-                versions = GAMES[(game - 1) % len(GAMES)]
-                title, region, rom = versions[0] if len(versions) == 1 else versions[v % len(versions)]
-                text = f"{msg.get('GAME_VERSION_J' if region == 'J' else 'GAME_VERSION_E')} {rom}"
-        elif pattern.endswith("+1"):
-            text = msg.get(pattern[:-2].format(v + 1), f"value {v}")
-        else:
-            text = msg.get(pattern.format(v), f"value {v}")
-        rows.append(Row(msg.get(label), text, msg.get(help_key)))
-    return View(msg.get("CREATE_LOBBY"), cursor, rows)
+                text = msg.get(pattern.format(v), f"value {v}")
+            rows.append(Row(msg.get(label), text, msg.get(help_key)))
+        return View(msg.get(title_key), _int(reader, obj + 0x324), rows)
+    return resolve
 
 
 # ---- Yes/No dialogs ("Exit the game?") ----
@@ -801,7 +807,8 @@ SCREENS = {
     0x140530C48: music_tracks,
     0x14052DF70: online_menu,
     0x14052D4B0: match_setup,
-    0x1405293D0: create_lobby,
+    0x1405293D0: lobby_settings("CREATE_LOBBY", 10, searching=False),
+    0x14052BEB8: lobby_settings("JOIN_LOBBY", 6, searching=True),
     0x140529A28: fixed_list("CUSTOM_MATCH", [
         ("CREATE_LOBBY", "HELP_CREATE_LOBBY"),
         ("JOIN_LOBBY", "HELP_JOIN_LOBBY"),
