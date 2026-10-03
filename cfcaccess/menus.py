@@ -972,8 +972,14 @@ def dialog(reader, obj):
     count = _int(reader, obj + 0x324)
     if not 0 < count <= 4:
         return None
-    rows = [Row(msg.by_index(_int(reader, obj + 0x32C + 4 * i), "?")) for i in range(count)]
-    return View(msg.by_index(_int(reader, obj + 0x360), ""), _int(reader, obj + 0x37C), rows)
+    # A one-button notice ("Quick save created." / OK) still says 2 buttons;
+    # the unused slot holds junk, so keep only real message numbers.
+    ids = [_int(reader, obj + 0x32C + 4 * i) for i in range(count)]
+    rows = [Row(msg.by_index(i)) for i in ids if 0 < i < 3074]
+    if not rows:
+        return None
+    cursor = min(_int(reader, obj + 0x37C), len(rows) - 1)
+    return View(msg.by_index(_int(reader, obj + 0x360), ""), cursor, rows)
 
 
 # Screen class (vtable address) -> resolver. A resolver returns HIDDEN for a
@@ -1028,6 +1034,7 @@ SCREENS = {
     0x140530180: leaderboard,
     0x1405290E8: move_list,
     0x14052FB10: lambda reader, obj: View("", 0, [Row(reader.msg.get("POP_GET_RANKING"))]),
+    0x1405305F0: lambda reader, obj: View("", 0, [Row(reader.msg.get("SYS_AUTOSAVE"))]),  # "Saving..." notice
     0x140529A28: fixed_list("CUSTOM_MATCH", [
         ("CREATE_LOBBY", "HELP_CREATE_LOBBY"),
         ("JOIN_LOBBY", "HELP_JOIN_LOBBY"),
