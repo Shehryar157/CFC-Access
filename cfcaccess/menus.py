@@ -17,6 +17,7 @@ Each screen is described by a "resolver": a function that reads the screen
 object and returns a View (title + rows of finished text). The speaking code
 only compares and speaks Views, whatever screen they came from.
 """
+import time
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -59,6 +60,7 @@ class View:
     title: str
     cursor: int
     rows: list = field(default_factory=list)
+    status: Optional[str] = None  # screen-wide state (e.g. "Shuffle on"), spoken when it changes
 
 
 def _int(reader, addr):
@@ -641,8 +643,28 @@ def music_tracks(reader, obj):
     prefix = MUSIC_PREFIX[album]
     entry = MUSIC_ALBUMS[album % len(MUSIC_ALBUMS)]
     title = msg.get("GAME_NAME_E") if entry is None else GAMES[entry][-1][0]
-    rows = [Row(msg.get(f"SOUND_{prefix}_{n:02d}", f"Track {n + 1}")) for n in range(count)]
-    return View(title, _int(reader, obj + 0x32C) + _int(reader, obj + 0x330), rows)
+    # Player state: +0x338 track playing (-1 none), +0x810 its length and
+    # +0x814 position, both in 1/60 s; +0x81C shuffle (1 on), +0x820 repeat
+    # (0 off, 1 all, 2 one). There's no pause flag: playing = position moving.
+    playing = _int(reader, obj + 0x338)
+    position = _int(reader, obj + 0x814)
+    now = time.time()
+    last_pos, last_move = getattr(reader, "_music_clock", (None, 0.0))
+    if position != last_pos:
+        last_move = now
+    reader._music_clock = (position, last_move)
+    state = "now playing" if now - last_move < 0.5 else "paused"
+    length = _int(reader, obj + 0x810) // 60
+    rows = []
+    for n in range(count):
+        value = None
+        if n == playing:
+            value = f"{state}, {length // 60}:{length % 60:02d}"
+        rows.append(Row(msg.get(f"SOUND_{prefix}_{n:02d}", f"Track {n + 1}"), value))
+    shuffle = "Shuffle on" if _int(reader, obj + 0x81C) else "Shuffle off"
+    repeat = ["Repeat off", "Repeat all", "Repeat one"][_int(reader, obj + 0x820) % 3]
+    return View(title, _int(reader, obj + 0x32C) + _int(reader, obj + 0x330), rows,
+                status=f"{shuffle}, {repeat}")
 
 
 # ---- Museum > Gallery > picture viewer ----
@@ -1122,6 +1144,8 @@ class MenuReader:
             speech.say(self.describe(view, with_title=False))
         else:
             self._speak_value_changes(old, view)
+        if view.status != old.status and view.status:
+            speech.say(view.status, interrupt=False)
 
     def _speak_value_changes(self, old, view):
         """A value changed without the cursor moving (Left/Right): say the
@@ -1149,4 +1173,6 @@ class MenuReader:
             parts.append(label if label[-1:] in ".?!" else f"{label}.")
         if row.help:
             parts.append(row.help)
+        if with_title and view.status:
+            parts.append(view.status + ".")
         return " ".join(parts)
