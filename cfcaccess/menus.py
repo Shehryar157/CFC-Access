@@ -371,6 +371,7 @@ class MenuReader:
         self.last_layer = None  # (object, class) of the layer last spoken
         self.last_view = None   # the View last spoken
         self.misses = 0         # invalid reads in a row
+        self.pending = None     # a new screen seen once, waiting to be confirmed
 
     def open_layers(self):
         """(object, class) of each open layer, topmost first.
@@ -475,13 +476,23 @@ class MenuReader:
             return
         self.misses = 0
         old, old_layer = self.last_view, self.last_layer
-        self.last_view, self.last_layer = view, layer
         if old is None or old_layer != layer or old.title != view.title:
-            # A different screen (or page): title, then the current row.
+            # A different screen (or page). During transitions screens can
+            # flash by for a frame or two, so only announce one that is
+            # still there on the next check.
+            key = (layer, view.title)
+            if self.pending != key:
+                self.pending = key
+                return
+            self.pending = None
+            self.last_view, self.last_layer = view, layer
             if view.title.startswith("Unknown screen"):
                 print(f"UNKNOWN SCREEN {view.title}")
             speech.say(self.describe(view, with_title=True))
-        elif old.cursor != view.cursor:
+            return
+        self.pending = None
+        self.last_view, self.last_layer = view, layer
+        if old.cursor != view.cursor:
             speech.say(self.describe(view, with_title=False))
         else:
             self._speak_value_changes(old, view)
