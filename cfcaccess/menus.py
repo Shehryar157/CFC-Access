@@ -630,9 +630,11 @@ def music_tracks(reader, obj):
 
 # ---- Museum > Gallery > picture viewer ----
 #   +0x320 picture number (from 0), +0x324 number of pictures.
-# Ctrl / right Ctrl: previous / next. The caption ("001. Main Key Art
-# (BENGUS)") is drawn from a text pool we can't follow reliably yet.
+# Ctrl / right Ctrl: previous / next.
+# Captions: exe+GALLERY_STARTS holds one pointer per gallery (picker order)
+# into a list of u32 caption message numbers, one per picture.
 GALLERY_SELECT_CLASS = 0x14052DB10
+GALLERY_STARTS = 0x673F30
 
 
 def gallery_viewer(reader, obj):
@@ -641,11 +643,17 @@ def gallery_viewer(reader, obj):
     if not 0 <= pic < count <= 2000:
         return None
     title = msg.get("GALLERY")
+    caption = ""
     select = reader.find_layer(GALLERY_SELECT_CLASS)
     if select:
         sel = _int(reader, select + 0x32C)
         title += ": " + (msg.get("GAME_NAME_E") if sel == 0 else GAMES[(sel - 1) % len(GAMES)][-1][0])
-    return View(title, 0, [Row("", f"Picture {pic + 1} of {count}")])
+        pm = reader.game.pm
+        if 0 <= sel < 11:
+            captions = pm.read_ulonglong(reader.game.base + GALLERY_STARTS + 8 * sel)
+            caption = msg.by_index(pm.read_uint(captions + 4 * pic), "")
+    value = f"Picture {pic + 1} of {count}" + (f": {caption}" if caption else "")
+    return View(title, 0, [Row("", value)])
 
 
 # ---- Online Play menu ----
