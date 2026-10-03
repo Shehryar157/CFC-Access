@@ -35,8 +35,15 @@ class Messages:
         else:
             raise FileNotFoundError(f"{wanted} not found in {path}")
         self._by_key = {key: text for key, text in pairs if key}
+        self._by_index = [text for _, text in pairs]
 
     def get(self, key, default=None):
         """Cleaned text for a key, or default if the key doesn't exist."""
         text = self._by_key.get(key)
         return clean(text) if text is not None else default
+
+    def by_index(self, index, default=None):
+        """Cleaned text for a message number (the game's tables store these)."""
+        if 0 <= index < len(self._by_index):
+            return clean(self._by_index[index])
+        return default

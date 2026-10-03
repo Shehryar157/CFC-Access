@@ -79,7 +79,7 @@ def _send(scan, extended, up):
 _last_hwnd = None
 
 
-def press(name, hold=0.08):
+def press(name, hold=0.05):
     # Key presses go to whatever window is in front, so make sure it's the game.
     if _last_hwnd and user32.GetForegroundWindow() != _last_hwnd:
         focus(_last_hwnd)
@@ -112,6 +112,29 @@ def screenshot(hwnd, path):
     user32.ReleaseDC(hwnd, hdc_window)
     Image.frombuffer("RGBA", (w, h), buf, "raw", "BGRA", 0, 1).convert("RGB").save(path)
     return path
+
+
+def wait_for(check, timeout=1.0, interval=0.02):
+    """Wait until check() returns something truthy, or timeout. Returns it.
+
+    Faster than a fixed sleep: we continue the moment the game has reacted.
+    """
+    end = time.time() + timeout
+    while True:
+        try:
+            result = check()
+        except Exception:
+            result = None
+        if result or time.time() > end:
+            return result
+        time.sleep(interval)
+
+
+def press_until_changed(name, read, timeout=1.0):
+    """Press a key and wait until read() returns something different."""
+    before = read()
+    press(name)
+    return wait_for(lambda: read() != before, timeout)
 
 
 def game_window():

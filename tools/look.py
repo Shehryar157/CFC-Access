@@ -16,15 +16,14 @@ from tools import win  # noqa: E402
 
 
 def current(game):
-    for exe_offset, offsets in menus.ROUTES:
-        try:
-            p = game.pm.read_ulonglong(game.base + exe_offset)
-            for off in offsets:
-                p = game.pm.read_ulonglong(p + off)
-            return p, game.pm.read_ulonglong(p), game.pm.read_int(p + 0x320), game.pm.read_int(p + 0x324)
-        except Exception:
-            continue
-    return None
+    """(object, class, cursor, count) of the top open layer, as the mod sees it."""
+    reader = menus.MenuReader(game, None)
+    layer = reader.top_layer()
+    if layer is None:
+        return None
+    obj, cls = layer
+    off = 0x34C if cls == 0x14052E3B8 else 0x320
+    return obj, cls, game.pm.read_int(obj + off), game.pm.read_int(obj + off + 4)
 
 
 if __name__ == "__main__":
