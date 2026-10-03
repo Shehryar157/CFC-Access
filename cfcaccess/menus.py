@@ -511,6 +511,18 @@ def options_network(reader, obj):
 # Challenge n (from 0) is ACHIEVEMENT_<n+1>_NAME/_DESC; Play Stats medal n
 # is STATS_<game>_<n>_NAME/_DESC. Earned/complete status and play counts
 # are drawn as pictures and aren't read yet.
+# Save data: [[exe+0x668EE98]+0x2B00] is the save object; each game has a
+# record SAVE_GAME_STRIDE bytes long, and its total play sessions are at
+# SAVE_PLAYS + stride * game (checked: Darkstalkers 3, Warzard 1).
+SAVE_ROUTE = (0x668EE98, 0x2B00)
+SAVE_PLAYS, SAVE_GAME_STRIDE = 0x29FC4, 0xE58
+
+
+def save_object(reader):
+    pm = reader.game.pm
+    return pm.read_ulonglong(pm.read_ulonglong(reader.game.base + SAVE_ROUTE[0]) + SAVE_ROUTE[1])
+
+
 STATS_PREFIX = ["VAMP", "VHUNT", "VSAV", "VHUNT2", "VSAV2",
                 "CYBOTS", "SPF2X", "PFIGHT", "HSF2", "WARZARD"]
 
@@ -529,20 +541,32 @@ def fighter_awards(reader, obj):
     prefix = STATS_PREFIX[game]
     rows = [Row(msg.get(f"STATS_{prefix}_{n:02d}_NAME", f"Medal {n + 1}"), None,
                 msg.get(f"STATS_{prefix}_{n:02d}_DESC")) for n in range(count)]
+    try:
+        plays = reader.game.pm.read_int(save_object(reader) + SAVE_PLAYS + SAVE_GAME_STRIDE * game)
+        sessions = f"{msg.get('AWARD_TOTAL_PLAY')} {plays}"
+    except Exception:
+        sessions = None
     # The game name is part of the title, so changing game announces it.
-    return View(f"{msg.get('AWARD_PLAY')}: {GAMES[game][-1][0]}", cursor, rows)
+    return View(f"{msg.get('AWARD_PLAY')}: {GAMES[game][-1][0]}", cursor, rows, status=sessions)
 
 
 # ---- Fighter Awards > Stats (X on Play Stats) ----
-# A fixed table, no cursor: five kinds of play (AWARD_OFFLINE_PLAY ..
-# AWARD_CUSTOM_PLAY), each counted for the Japanese and English versions.
-# The counts haven't been located yet (they were all 0 when researched),
-# so for now the mod reads the row names and says the counts aren't read.
+# A table for the game shown on Play Stats: +0x320 game number, then
+# +0x328 five Japanese-version counts (offline play sessions, online,
+# casual, ranked, custom matches) and +0x33C the same five for the English
+# version. Checked with Darkstalkers (English 3) and Warzard (Japanese 1).
 def award_stats(reader, obj):
     msg = reader.msg
-    names = ", ".join(msg.by_index(i) for i in range(2090, 2095))
-    summary = f"{names}. Counts for the Japanese and English versions are not read yet."
-    return View(msg.get("AWARD_STATS"), 0, [Row(summary)])
+    game = _int(reader, obj + 0x320)
+    if not 0 <= game < len(GAMES):
+        return None
+    jp_word, en_word = msg.get("GAME_VERSION_J"), msg.get("GAME_VERSION_E")
+    parts = []
+    for k in range(5):
+        jp = _int(reader, obj + 0x328 + 4 * k)
+        en = _int(reader, obj + 0x33C + 4 * k)
+        parts.append(f"{msg.by_index(2090 + k)}: {jp_word} {jp}, {en_word} {en}")
+    return View(f"{msg.get('AWARD_STATS')}: {GAMES[game][-1][0]}", 0, [Row(". ".join(parts))])
 
 
 # ---- Options > PC Settings ----
