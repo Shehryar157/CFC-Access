@@ -458,6 +458,38 @@ def options_system(reader, obj):
     return View(msg.get("MENU_OP_SYSTEM"), _int(reader, obj + 0x320), rows)
 
 
+# ---- Options > Network ----
+#   +0x324 cursor, +0x328 count, +0x34C + 4*row value, +0x3AC + 4*row label message
+# label message -> (description message, how to show the value)
+NETWORK_ROWS = {
+    207: (210, ("message", 208)),   # Microphone: Off / On
+    211: (212, ("bar", None)),      # Voice Chat Volume
+    213: (214, ("bar", None)),      # Input Delay
+    216: (222, ("message", 217)),   # Connection Strength: Any, 2+, 3+, 4+, 5
+    175: (176, None),               # Default
+}
+
+
+def options_network(reader, obj):
+    msg = reader.msg
+    count = _int(reader, obj + 0x328)
+    if not 0 < count <= 10:
+        return None
+    rows = []
+    for i in range(count):
+        label = _int(reader, obj + 0x3AC + 4 * i)
+        value = _int(reader, obj + 0x34C + 4 * i)
+        help_id, kind = NETWORK_ROWS.get(label, (None, None))
+        if kind and kind[0] == "message":
+            text = msg.by_index(kind[1] + value)
+        elif kind and kind[0] == "bar":
+            text = f"{value} of 10"
+        else:
+            text = None
+        rows.append(Row(msg.by_index(label, "?"), text, msg.by_index(help_id) if help_id else None))
+    return View(msg.get("MENU_OP_NET"), _int(reader, obj + 0x324), rows)
+
+
 # ---- Yes/No dialogs ("Exit the game?") ----
 #   +0x360 question message, +0x324 button count, +0x32C + 4*i button
 #   messages (36 = "Yes", 37 = "No"), +0x37C cursor (0 = first button)
@@ -504,6 +536,7 @@ SCREENS = {
     0x14052F490: training_menu,
     0x14052F070: options_music,
     0x14052F280: options_system,
+    0x14052E800: options_network,
 }
 
 MISS_LIMIT = 6  # invalid reads in a row (at 20 a second) before a screen counts as gone
