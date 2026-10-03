@@ -245,15 +245,16 @@ def pause_menu(reader, obj):
 
 
 # ---- Versus Menu (from the pause menu) ----
-#   +0x324 cursor, +0x32C count, +0x330 + 4*row option id,
-#   +0x350 + 4*id current value
+#   +0x328 cursor, +0x32C count, +0x330 + 4*row option id,
+#   +0x370 + 4*id current value (+0x350 holds the values from before the
+#   menu was opened)
 VERSUS_OPTIONS = {
     0: ("VS_PLAYER", "HELP_VS_PLAYER", None),
     1: ("LOBBY_ROUND", "HELP_LOBBY_ROUND", "LOBBY_ROUND_{:02d}"),
     2: ("LOBBY_SPMOVE", "HELP_LOBBY_SPMOVE", "LOBBY_SPMOVE_{:02d}"),
     3: ("MENU_OP_DEFAULT", "HELP_OP_DEFAULT", None),
 }
-OPPONENT_VALUES = {0: "DUMMY_ACTION_06"}  # "CPU"; other values not seen yet
+OPPONENT_VALUES = {0: "DUMMY_ACTION_05", 1: "DUMMY_ACTION_06"}  # "Human", "CPU"
 
 
 def versus_menu(reader, obj):
@@ -263,7 +264,7 @@ def versus_menu(reader, obj):
     for i in range(count):
         oid = _int(reader, obj + 0x330 + 4 * i)
         label, help_key, values = VERSUS_OPTIONS.get(oid, (None, None, None))
-        value = _int(reader, obj + 0x350 + 4 * oid)
+        value = _int(reader, obj + 0x370 + 4 * oid)
         if oid == 0:
             text = msg.get(OPPONENT_VALUES[value]) if value in OPPONENT_VALUES else f"value {value}"
         elif values:
@@ -272,7 +273,7 @@ def versus_menu(reader, obj):
             text = None
         rows.append(Row(msg.get(label, f"Option {oid}") if label else f"Option {oid}", text,
                         msg.get(help_key) if help_key else None))
-    return View(msg.get("VERSUS_MENU"), _int(reader, obj + 0x324), rows)
+    return View(msg.get("VERSUS_MENU"), _int(reader, obj + 0x328), rows)
 
 
 # Screen class (vtable address) -> resolver. Message keys come from msg.arc's
