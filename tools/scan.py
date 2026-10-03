@@ -53,6 +53,7 @@ LAYOUTS = {
     "main": (215, 156, 53.3, 6),          # main menu, options, museum
     "gamesettings": (195, 245, 53.3, 6),  # Game Settings pop-up
     "pause": (232, 178, 53.3, 7),         # in-game pause menu
+    "leaderboard": (120, 214, 48.7, 7),   # ranked leaderboard rows
 }
 layout = "main"
 
@@ -62,7 +63,7 @@ def detect_main_menu(hwnd):
     from PIL import Image
     x, y0, step, rows = LAYOUTS[layout]
     im = Image.open(win.screenshot(hwnd, "scratch/detect.png"))
-    lit = [i for i in range(rows) if im.getpixel((x, int(y0 + step * i)))[2] > 90]
+    lit = [i for i in range(rows) if (lambda c: c[2] > 90 and c[2] - c[0] > 60)(im.getpixel((x, int(y0 + step * i))))]
     if len(lit) != 1:
         sys.exit(f"could not see the cursor (lit rows {lit}); see scratch/detect.png")
     return lit[0]

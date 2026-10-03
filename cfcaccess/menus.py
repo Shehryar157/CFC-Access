@@ -790,17 +790,34 @@ def leaderboard_game(reader, obj):
 
 # ---- Online > Ranked Leaderboard ----
 #   +0x320 game (Select Game order); Ctrl / right Ctrl change it.
-# The entries are objects of class 0x140566388 laid out every 0x1D8 bytes
-# (name at +0xE0, League Points at +0x148), but no stable route to them or
-# to the highlighted row has been found yet.
+#   +0x344 how far the list is scrolled, +0x348 highlighted row on screen;
+#   highlighted entry = both added.
+# The downloaded entries: [exe+0x79F718]+0x240 points to a block whose
+# entries start at +0x58, every 0x1D8 bytes: name (UTF-8) at +0xE0,
+# League Points at +0x148. Your own row at the bottom isn't read yet.
+LEADERBOARD_BLOCK = (0x79F718, 0x240)
+LB_FIRST, LB_STRIDE, LB_NAME, LB_POINTS = 0x58, 0x1D8, 0xE0, 0x148
+
+
 def leaderboard(reader, obj):
     msg = reader.msg
+    pm = reader.game.pm
     game = _int(reader, obj + 0x320)
     if not 0 <= game < len(GAMES):
         return None
     title = f"{msg.get('RANK_LEADERBOARD')}: {GAMES[game][-1][0]}"
-    return View(title, 0, [Row("The ranking list can't be read yet. Ctrl and right Ctrl change the game. "
-                               "Backspace goes back.")])
+    index = _int(reader, obj + 0x344) + _int(reader, obj + 0x348)
+    try:
+        block = pm.read_ulonglong(pm.read_ulonglong(reader.game.base + LEADERBOARD_BLOCK[0]) + LEADERBOARD_BLOCK[1])
+        entry = block + LB_FIRST + LB_STRIDE * index
+        name = pm.read_bytes(entry + LB_NAME, 64).split(b"\0", 1)[0].decode("utf-8", "replace")
+        points = pm.read_int(entry + LB_POINTS)
+    except Exception:
+        name = ""
+    if not name:
+        return View(title, 0, [Row("No entries.")])
+    # A single row whose value changes, so moving speaks the new entry.
+    return View(title, 0, [Row("", f"Rank {index + 1}: {name}, {points} League Points")])
 
 
 # ---- Pause > Move List ----
