@@ -178,7 +178,7 @@ BUTTON_PREFIX = ["VAMP", "VAMP", "VAMP", "VAMP", "VAMP",
 
 # The game's own key numbers. Worked out from the key icons shown on screen
 # for known numbers; unknown ones are spoken as "key N" (and logged).
-KEY_NAMES = {7: "Alt", 13: "Left Arrow", 14: "Up Arrow", 15: "Right Arrow", 16: "Down Arrow"}
+KEY_NAMES = {7: "Right Alt", 13: "Left Arrow", 14: "Up Arrow", 15: "Right Arrow", 16: "Down Arrow"}
 KEY_NAMES.update({29 + i: chr(ord("A") + i) for i in range(26)})
 KEY_NAMES.update({55 + i: f"F{i + 1}" for i in range(12)})
 
@@ -430,6 +430,34 @@ def options_music(reader, obj):
     return View(msg.get("MENU_OP_SOUND"), _int(reader, obj + 0x320), rows)
 
 
+# ---- Options > System ----
+# A fixed list: +0x320 cursor, +0x324 count, +0x328 + 4*row value.
+#   Language: index of the language-name message (1 = "English [en]")
+#   Data Collection: 0 Decline, 1 Agree
+#   Menu/Start/Coin Button: one of SYSTEM_KEYS (the key pictures on screen
+#   mark left/right with a dot; we say it in words)
+SYSTEM_KEYS = ["F1", "F2", "Left Ctrl", "Right Ctrl", "Left Shift", "Right Shift",
+               "Left Alt", "Right Alt"]
+
+
+def options_system(reader, obj):
+    msg = reader.msg
+    if _int(reader, obj + 0x324) != 6:
+        return None
+    v = [_int(reader, obj + 0x328 + 4 * i) for i in range(5)]
+    key = lambda n: SYSTEM_KEYS[n] if 0 <= n < len(SYSTEM_KEYS) else f"key {n}"
+    rows = [
+        Row(msg.get("MENU_OP_LANGUAGE"), msg.by_index(v[0], f"language {v[0]}") if v[0] <= 12 else f"language {v[0]}",
+            msg.get("HELP_OP_LANG")),
+        Row(msg.get("DATA_UPLOAD"), msg.get(f"DATA_UPLOAD_{v[1]:02d}"), msg.get("HELP_DATA_UPLOAD")),
+        Row(msg.get("MENU_OP_MENU_BTN"), key(v[2]), msg.get("HELP_OP_MENU_BTN")),
+        Row(msg.get("MENU_OP_START_BTN"), key(v[3]), msg.get("HELP_OP_START_BTN")),
+        Row(msg.get("MENU_OP_COIN_BTN"), key(v[4]), msg.get("HELP_OP_COIN_BTN")),
+        Row(msg.get("MENU_OP_DEFAULT"), None, msg.get("HELP_OP_DEFAULT")),
+    ]
+    return View(msg.get("MENU_OP_SYSTEM"), _int(reader, obj + 0x320), rows)
+
+
 # ---- Yes/No dialogs ("Exit the game?") ----
 #   +0x360 question message, +0x324 button count, +0x32C + 4*i button
 #   messages (36 = "Yes", 37 = "No"), +0x37C cursor (0 = first button)
@@ -475,6 +503,7 @@ SCREENS = {
     0x140530A38: select_mode,
     0x14052F490: training_menu,
     0x14052F070: options_music,
+    0x14052F280: options_system,
 }
 
 MISS_LIMIT = 6  # invalid reads in a row (at 20 a second) before a screen counts as gone
