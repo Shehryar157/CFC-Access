@@ -398,6 +398,38 @@ def training_menu(reader, obj):
     return View(msg.get(TRAINING_PAGES[page]), _int(reader, obj + 0x340 + 4 * page), rows)
 
 
+# ---- Options > Music ----
+# A fixed list (the labels aren't stored in the object):
+#   +0x320 cursor, +0x324 count, +0x348 + 4*row value (volumes 1..10,
+#   jingle 0 = Original, 1 = Remix); +0x328 holds the values from opening.
+OPTIONS_MUSIC_ROWS = [
+    ("MENU_OP_BGM_VOLUME", "HELP_OP_BGM_VOL", "volume"),
+    ("MENU_OP_SE_VOLUME", "HELP_OP_SE_VOL", "volume"),
+    ("MENU_OP_VOICE_VOLUME", "HELP_OP_VOICE_VOL", "volume"),
+    ("MENU_OP_GAME_VOLUME", "HELP_OP_GAME_VOL", "volume"),
+    ("MENU_OP_HERE_SE", "HELP_OP_HERE_SE", "MENU_OP_HERE_SE_{:02d}"),
+    ("MENU_OP_DEFAULT", "HELP_OP_DEFAULT", None),
+]
+
+
+def options_music(reader, obj):
+    msg = reader.msg
+    count = _int(reader, obj + 0x324)
+    if count != len(OPTIONS_MUSIC_ROWS):
+        return None
+    rows = []
+    for i, (label, help_key, kind) in enumerate(OPTIONS_MUSIC_ROWS):
+        value = _int(reader, obj + 0x348 + 4 * i)
+        if kind == "volume":
+            text = f"{value} of 10"
+        elif kind:
+            text = msg.get(kind.format(value), f"value {value}")
+        else:
+            text = None
+        rows.append(Row(msg.get(label), text, msg.get(help_key)))
+    return View(msg.get("MENU_OP_SOUND"), _int(reader, obj + 0x320), rows)
+
+
 # ---- Yes/No dialogs ("Exit the game?") ----
 #   +0x360 question message, +0x324 button count, +0x32C + 4*i button
 #   messages (36 = "Yes", 37 = "No"), +0x37C cursor (0 = first button)
@@ -442,6 +474,7 @@ SCREENS = {
     0x14052E1A8: display_sound,
     0x140530A38: select_mode,
     0x14052F490: training_menu,
+    0x14052F070: options_music,
 }
 
 MISS_LIMIT = 6  # invalid reads in a row (at 20 a second) before a screen counts as gone
