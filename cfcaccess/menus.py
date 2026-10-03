@@ -962,6 +962,7 @@ def move_list(reader, obj):
 # ---- Yes/No dialogs ("Exit the game?") ----
 #   +0x360 question message, +0x324 button count, +0x32C + 4*i button
 #   messages (36 = "Yes", 37 = "No"), +0x37C cursor (0 = first button)
+DIALOG_BUTTONS = (36, 44)  # SYS_WINDOW_YES .. SYS_WINDOW_NEXT: Yes, No, OK, Back, Agree, ...
 DIALOG_SHOWING = 1  # status +0x8: 1 while shown; 4 once closed (the layer can linger)
 
 
@@ -975,11 +976,14 @@ def dialog(reader, obj):
     # A one-button notice ("Quick save created." / OK) still says 2 buttons;
     # the unused slot holds junk, so keep only real message numbers.
     ids = [_int(reader, obj + 0x32C + 4 * i) for i in range(count)]
-    rows = [Row(msg.by_index(i)) for i in ids if 0 < i < 3074]
+    rows = [Row(msg.by_index(i)) for i in ids if DIALOG_BUTTONS[0] <= i <= DIALOG_BUTTONS[1]]
     if not rows:
         return None
     cursor = min(_int(reader, obj + 0x37C), len(rows) - 1)
-    return View(msg.by_index(_int(reader, obj + 0x360), ""), cursor, rows)
+    question = msg.by_index(_int(reader, obj + 0x360), "")
+    if "%s" in question:  # the game fills in the current game's name here
+        question = question.replace('"%s"', "this game").replace("%s", "this game")
+    return View(question, cursor, rows)
 
 
 # Screen class (vtable address) -> resolver. A resolver returns HIDDEN for a
