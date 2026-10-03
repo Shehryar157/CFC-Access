@@ -519,6 +519,18 @@ def fighter_awards(reader, obj):
     return View(f"{msg.get('AWARD_PLAY')}: {GAMES[game][-1][0]}", cursor, rows)
 
 
+# ---- Fighter Awards > Stats (X on Play Stats) ----
+# A fixed table, no cursor: five kinds of play (AWARD_OFFLINE_PLAY ..
+# AWARD_CUSTOM_PLAY), each counted for the Japanese and English versions.
+# The counts haven't been located yet (they were all 0 when researched),
+# so for now the mod reads the row names and says the counts aren't read.
+def award_stats(reader, obj):
+    msg = reader.msg
+    names = ", ".join(msg.by_index(i) for i in range(2090, 2095))
+    summary = f"{names}. Counts for the Japanese and English versions are not read yet."
+    return View(msg.get("AWARD_STATS"), 0, [Row(summary)])
+
+
 # ---- Yes/No dialogs ("Exit the game?") ----
 #   +0x360 question message, +0x324 button count, +0x32C + 4*i button
 #   messages (36 = "Yes", 37 = "No"), +0x37C cursor (0 = first button)
@@ -567,6 +579,7 @@ SCREENS = {
     0x14052F280: options_system,
     0x14052E800: options_network,
     0x140527BC0: fighter_awards,
+    0x140528070: award_stats,
 }
 
 MISS_LIMIT = 6  # invalid reads in a row (at 20 a second) before a screen counts as gone
@@ -731,7 +744,7 @@ class MenuReader:
         if len(view.rows) > 1:
             parts.append(f"{label}, {view.cursor + 1} of {len(view.rows)}.")
         else:
-            parts.append(f"{label}.")
+            parts.append(label if label[-1:] in ".?!" else f"{label}.")
         if row.help:
             parts.append(row.help)
         return " ".join(parts)
