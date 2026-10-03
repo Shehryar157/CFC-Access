@@ -490,6 +490,35 @@ def options_network(reader, obj):
     return View(msg.get("MENU_OP_NET"), _int(reader, obj + 0x324), rows)
 
 
+# ---- Fighter Awards (main menu) ----
+#   +0x324 page: 0 = Challenges, 1 = Play Stats (Y switches)
+#   +0x328 game shown on Play Stats (Ctrl / right Ctrl; same order as Select Game)
+#   +0x344 medal cursor, +0x348 number of medals on the page
+# Challenge n (from 0) is ACHIEVEMENT_<n+1>_NAME/_DESC; Play Stats medal n
+# is STATS_<game>_<n>_NAME/_DESC. Earned/complete status and play counts
+# are drawn as pictures and aren't read yet.
+STATS_PREFIX = ["VAMP", "VHUNT", "VSAV", "VHUNT2", "VSAV2",
+                "CYBOTS", "SPF2X", "PFIGHT", "HSF2", "WARZARD"]
+
+
+def fighter_awards(reader, obj):
+    msg = reader.msg
+    count = _int(reader, obj + 0x348)
+    if not 0 < count <= 100:
+        return None
+    cursor = _int(reader, obj + 0x344)
+    if _int(reader, obj + 0x324) == 0:
+        rows = [Row(msg.get(f"ACHIEVEMENT_{n + 1:02d}_NAME", f"Challenge {n + 1}"), None,
+                    msg.get(f"ACHIEVEMENT_{n + 1:02d}_DESC")) for n in range(count)]
+        return View(msg.get("AWARD_ACHIEVE"), cursor, rows)
+    game = _int(reader, obj + 0x328) % len(GAMES)
+    prefix = STATS_PREFIX[game]
+    rows = [Row(msg.get(f"STATS_{prefix}_{n:02d}_NAME", f"Medal {n + 1}"), None,
+                msg.get(f"STATS_{prefix}_{n:02d}_DESC")) for n in range(count)]
+    # The game name is part of the title, so changing game announces it.
+    return View(f"{msg.get('AWARD_PLAY')}: {GAMES[game][-1][0]}", cursor, rows)
+
+
 # ---- Yes/No dialogs ("Exit the game?") ----
 #   +0x360 question message, +0x324 button count, +0x32C + 4*i button
 #   messages (36 = "Yes", 37 = "No"), +0x37C cursor (0 = first button)
@@ -537,6 +566,7 @@ SCREENS = {
     0x14052F070: options_music,
     0x14052F280: options_system,
     0x14052E800: options_network,
+    0x140527BC0: fighter_awards,
 }
 
 MISS_LIMIT = 6  # invalid reads in a row (at 20 a second) before a screen counts as gone

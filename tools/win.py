@@ -82,7 +82,7 @@ def _send(scan, extended, up):
 _last_hwnd = None
 
 
-def press(name, hold=0.05):
+def press(name, hold=0.1):
     # Key presses go to whatever window is in front, so make sure it's the game.
     if _last_hwnd and user32.GetForegroundWindow() != _last_hwnd:
         focus(_last_hwnd)
