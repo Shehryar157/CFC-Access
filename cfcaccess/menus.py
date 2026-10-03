@@ -857,6 +857,7 @@ SCREENS = {
     0x14052B580: lobby_id,
     0x14052FF70: leaderboard_game,
     0x140530180: leaderboard,
+    0x14052FB10: lambda reader, obj: View("", 0, [Row(reader.msg.get("POP_GET_RANKING"))]),
     0x140529A28: fixed_list("CUSTOM_MATCH", [
         ("CREATE_LOBBY", "HELP_CREATE_LOBBY"),
         ("JOIN_LOBBY", "HELP_JOIN_LOBBY"),
