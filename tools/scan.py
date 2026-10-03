@@ -48,11 +48,20 @@ def describe(game, address):
     return f"{address:#x}"
 
 
+# Where each kind of list draws its rows: (x, first row y, row spacing, rows).
+LAYOUTS = {
+    "main": (215, 156, 53.3, 6),          # main menu, options, museum
+    "gamesettings": (195, 245, 53.3, 6),  # Game Settings pop-up
+}
+layout = "main"
+
+
 def detect_main_menu(hwnd):
-    """Read the main menu cursor from a screenshot: the highlighted row is teal."""
+    """Read the list cursor from a screenshot: the highlighted row is teal."""
     from PIL import Image
+    x, y0, step, rows = LAYOUTS[layout]
     im = Image.open(win.screenshot(hwnd, "scratch/detect.png"))
-    lit = [i for i in range(6) if im.getpixel((215, int(156 + 53.3 * i)))[2] > 90]
+    lit = [i for i in range(rows) if im.getpixel((x, int(y0 + step * i)))[2] > 90]
     if len(lit) != 1:
         sys.exit(f"could not see the cursor (lit rows {lit}); see scratch/detect.png")
     return lit[0]
@@ -135,4 +144,6 @@ def main(spec):
 
 
 if __name__ == "__main__":
+    if len(sys.argv) > 2:
+        layout = sys.argv[2]
     main(sys.argv[1])

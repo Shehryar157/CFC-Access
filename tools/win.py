@@ -25,6 +25,7 @@ SCAN = {
     "z": (0x2C, False), "x": (0x2D, False), "c": (0x2E, False), "v": (0x2F, False),
     "a": (0x1E, False), "s": (0x1F, False), "d": (0x20, False), "w": (0x11, False),
     "q": (0x10, False), "e": (0x12, False), "f1": (0x3B, False),
+    "ctrl": (0x1D, False), "rctrl": (0x1D, True), "shift": (0x2A, False), "y": (0x15, False),
 }
 
 KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE = 0x1, 0x2, 0x8
