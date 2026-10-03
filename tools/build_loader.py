@@ -14,7 +14,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 from cfcaccess.text import GAME_DIR  # noqa: E402
 
-ZIG = r"C:\Users\Administrator\tools\zig\zig.exe"
+ZIG = r"E:\code\mods\tools\zig\zig.exe"
 LOADER = os.path.join(ROOT, "loader")
 DLL = os.path.join(LOADER, "dinput8.dll")
 OUR_FILES = ["dinput8.dll", "CFCAccess.txt", "CFCAccess_loader.log"]

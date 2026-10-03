@@ -35,6 +35,8 @@ IGNORED_CLASSES = {
     0x14052F6A0,  # pause menu logic object (briefly listed while closing)
     # Appear together with the pause menu; probably its parts (to verify).
     0x1405314F0, 0x14052AE58, 0x14052F8E8,
+    # Training mode displays (damage/combo counters, hitboxes, input log).
+    0x14052C718, 0x14052C4E8, 0x140527968,
 }
 MAX_LAYERS = 24
 EXE_START, EXE_END = 0x140100000, 0x147800000  # vtables live well past the exe header
@@ -218,33 +220,57 @@ def keyboard_settings(reader, obj):
 # The ids index a fixed list of possible items; each mode shows a subset.
 # Only ids seen on screen so far are named; others are spoken as "Option N".
 PAUSE_LOGIC_CLASS = 0x14052F6A0
+TASKS = 0x668EF90  # the game's list of running tasks ("units")
 PAUSE_ITEMS = {
     0: ("CONTINUE", "HELP_CONTINUE"),
+    1: ("CONTINUE", "HELP_CONTINUE_TR"),       # Resume, in training mode
     3: ("COMMAND_LIST", "HELP_COMMAND_LIST"),
     4: ("PAD_SETTING", None),
     5: ("DISPLAY_SOUND_SETTINGS", None),
+    6: ("TRAINING_MENU", "HELP_TRAINING_MENU"),
     7: ("VERSUS_MENU", "HELP_VERSUS_MENU"),
     9: ("CHARA_CHANGE", "HELP_CHARA_CHANGE"),
     12: ("QUIT", "HELP_QUIT"),
 }
 
 
+def find_task(reader, cls):
+    """A running task object of this class, from the game's task list."""
+    pm = reader.game.pm
+    tasks = pm.read_ulonglong(reader.game.base + TASKS)
+    for off in range(0x100, 0x800, 8):
+        try:
+            p = pm.read_ulonglong(tasks + off)
+            if p and pm.read_ulonglong(p) == cls:
+                return p
+        except Exception:
+            continue
+    return None
+
+
 def pause_menu(reader, obj):
     msg = reader.msg
     pm = reader.game.pm
-    logic = pm.read_ulonglong(obj + 0x790)
-    if pm.read_ulonglong(logic) != PAUSE_LOGIC_CLASS:
-        return None
+    # The logic object (cursor, items) lives in the task list. The layer's
+    # +0x790 sometimes points to it too, but not always.
+    logic = find_task(reader, PAUSE_LOGIC_CLASS)
+    if logic is None:
+        logic = pm.read_ulonglong(obj + 0x790)
+        if pm.read_ulonglong(logic) != PAUSE_LOGIC_CLASS:
+            return None
     # The pause menu isn't destroyed when it closes, only put to sleep: its
     # logic object's status (+0x8) is 2 while open and 256 while hidden.
     if _int(reader, logic + 0x8) & 0x100:
         return HIDDEN
     count = _int(reader, logic + 0x32C)
+    items = [_int(reader, logic + 0x334 + 4 * i) for i in range(count)]
+    training = 1 in items  # the training-mode Resume
     rows = []
-    for i in range(count):
-        item = _int(reader, logic + 0x334 + 4 * i)
+    for item in items:
         if item in PAUSE_ITEMS:
             label, help_key = PAUSE_ITEMS[item]
+            if item == 12 and training:
+                help_key = "HELP_QUIT_TR"
             rows.append(Row(msg.get(label), None, msg.get(help_key) if help_key else None))
         else:
             print(f"UNKNOWN PAUSE ITEM {item}")
@@ -332,6 +358,37 @@ def select_mode(reader, obj):
                 [Row("", msg.by_index(MODE_ARCADE + mode, f"Mode {mode}"), msg.get("HELP_MODE_SELECT"))])
 
 
+# ---- Training Menu (pause menu in a training match) ----
+# Four pages (Ctrl switches), each a block of 8 slots (0x20 bytes) per table:
+#   +0x328 page, +0x340 + 4*page cursor on each page, +0x350 + 4*page rows
+#   +0x5E0 labels, +0x660 first value message, +0x6E0 descriptions
+#   +0x3E0 current values (+0x4E0 is a copy from when the menu opened)
+NET_SIMULATION = 813  # "Network Delay"
+TRAINING_PAGES = ["DUMMY_OPTION", "DUMMY_SETTING", "PLAYER_SETTING", "TRAINING_OPTION"]
+
+
+def training_menu(reader, obj):
+    msg = reader.msg
+    page = _int(reader, obj + 0x328)
+    if not 0 <= page < len(TRAINING_PAGES):
+        return None
+    count = _int(reader, obj + 0x350 + 4 * page)
+    rows = []
+    for i in range(count):
+        slot = 0x20 * page + 4 * i
+        label = _int(reader, obj + 0x5E0 + slot)
+        first = _int(reader, obj + 0x660 + slot)
+        value = _int(reader, obj + 0x3E0 + slot)
+        if label == NET_SIMULATION:
+            text = f"{value} of 10"  # drawn as a 10-segment bar
+        elif first > 0 and label != MENU_OP_DEFAULT:
+            text = msg.by_index(first + value)
+        else:
+            text = None
+        rows.append(Row(msg.by_index(label, "?"), text, msg.by_index(_int(reader, obj + 0x6E0 + slot))))
+    return View(msg.get(TRAINING_PAGES[page]), _int(reader, obj + 0x340 + 4 * page), rows)
+
+
 # ---- Yes/No dialogs ("Exit the game?") ----
 #   +0x360 question message, +0x324 button count, +0x32C + 4*i button
 #   messages (36 = "Yes", 37 = "No"), +0x37C cursor (0 = first button)
@@ -375,6 +432,7 @@ SCREENS = {
     0x140528D90: dialog,
     0x14052E1A8: display_sound,
     0x140530A38: select_mode,
+    0x14052F490: training_menu,
 }
 
 MISS_LIMIT = 6  # invalid reads in a row (at 20 a second) before a screen counts as gone
