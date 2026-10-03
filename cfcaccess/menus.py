@@ -178,19 +178,35 @@ FIXED_BINDINGS = ["MENU_OP_PAD_MENU", "MENU_OP_PAD_START", "MENU_OP_PAD_COIN",
 BUTTON_PREFIX = ["VAMP", "VAMP", "VAMP", "VAMP", "VAMP",
                  "CYBOTS", "SPF2X", "SGEMF", "HSF2", "WZARD"]
 
-# The game's own key numbers. Worked out from the key icons shown on screen
-# for known numbers; unknown ones are spoken as "key N" (and logged).
-KEY_NAMES = {7: "Right Alt", 13: "Left Arrow", 14: "Up Arrow", 15: "Right Arrow", 16: "Down Arrow"}
-KEY_NAMES.update({29 + i: chr(ord("A") + i) for i in range(26)})
-KEY_NAMES.update({55 + i: f"F{i + 1}" for i in range(12)})
+# The game's own key numbers index a table of standard Windows key codes in
+# the exe (KEY_CODES, 67 entries: 0 = none, then Tab, Shift, Ctrl, Alt, ...,
+# 0-9, A-Z, F1-F12). Windows itself names each code, in the system's language.
+KEY_CODES, KEY_COUNT = 0x66BBF0, 67
+_EXTENDED_KEYS = {33, 34, 35, 36, 37, 38, 39, 40, 45, 46, 163, 165}
+_LEFT_KEYS = {160, 162, 164}  # Windows calls these just "Shift", "Ctrl", "Alt"
 
 
-def key_name(number):
-    name = KEY_NAMES.get(number)
-    if name is None:
-        log_once(f"UNKNOWN KEY NUMBER {number}")
-        return f"key {number}"
-    return name
+def windows_key_name(vk):
+    import ctypes
+    user32 = ctypes.windll.user32
+    scan = user32.MapVirtualKeyW(vk, 0)
+    lparam = (scan << 16) | ((1 << 24) if vk in _EXTENDED_KEYS else 0)
+    buf = ctypes.create_unicode_buffer(64)
+    user32.GetKeyNameTextW(lparam, buf, 64)
+    name = buf.value
+    return f"Left {name}" if vk in _LEFT_KEYS and name else name
+
+
+def key_name(reader, number):
+    if number == 0:
+        return reader.msg.get("MENU_OP_PAD_DEF_00")  # "None"
+    if 0 < number < KEY_COUNT:
+        vk = reader.game.pm.read_uint(reader.game.base + KEY_CODES + 4 * number)
+        name = windows_key_name(vk)
+        if name:
+            return name
+    log_once(f"UNKNOWN KEY NUMBER {number}")
+    return f"key {number}"
 
 
 def keyboard_settings(reader, obj):
@@ -207,7 +223,7 @@ def keyboard_settings(reader, obj):
     for i in range(count):
         key = _int(reader, obj + 0x374 + 0x40 * layout + 4 * i)
         rows.append(Row(labels[i] if i < len(labels) else f"Binding {i + 1}",
-                        key_name(key), msg.get("HELP_KBD_KEY")))
+                        key_name(reader, key), msg.get("HELP_KBD_KEY")))
     rows.append(Row(msg.get("MENU_OP_DEFAULT"), None, msg.get("HELP_OP_DEFAULT")))
     # The game numbers Default as 15 whatever the number of bindings.
     cursor = _int(reader, obj + 0x324)
