@@ -42,6 +42,12 @@ class Messages:
         text = self._by_key.get(key)
         return clean(text) if text is not None else default
 
+    def raw_by_index(self, index, default=""):
+        """Uncleaned text (tags kept) for a message number."""
+        if 0 <= index < len(self._by_index):
+            return self._by_index[index]
+        return default
+
     def by_index(self, index, default=None):
         """Cleaned text for a message number (the game's tables store these)."""
         if 0 <= index < len(self._by_index):

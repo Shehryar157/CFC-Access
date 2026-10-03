@@ -795,6 +795,31 @@ def leaderboard(reader, obj):
                                "Backspace goes back.")])
 
 
+# ---- Pause > Move List ----
+#   +0x320 game (Select Game order), +0x338 page, +0x344 + 4*row record
+#   number in that game's move table, +0x3C8 rows on the page, +0x3C4 scroll.
+# There is no row highlight (Up/Down scroll), and a page mostly fits on
+# screen, so the whole page is read as one announcement when it opens.
+BASIC_MOVES_CHARACTER = 127
+
+
+def move_list(reader, obj):
+    from .movelist import MoveLists
+    msg = reader.msg
+    if getattr(reader, "moves", None) is None:
+        reader.moves = MoveLists(reader.game, msg)
+    game = _int(reader, obj + 0x320)
+    count = _int(reader, obj + 0x3C8)
+    if not 0 <= game < len(GAMES) or not 0 < count <= 64:
+        return None
+    records = [_int(reader, obj + 0x344 + 4 * i) for i in range(count)]
+    basic = reader.moves.record_character(game, records[0]) == BASIC_MOVES_CHARACTER
+    title = msg.get("BASIC_MOVES") if basic else msg.get("PLAYER_MOVES")
+    lines = [reader.moves.record_text(game, r) for r in records]
+    page = ". ".join(l.rstrip(".") for l in lines if l) + "."
+    return View(f"{title}, page {_int(reader, obj + 0x338) + 1}", 0, [Row(page)])
+
+
 # ---- Yes/No dialogs ("Exit the game?") ----
 #   +0x360 question message, +0x324 button count, +0x32C + 4*i button
 #   messages (36 = "Yes", 37 = "No"), +0x37C cursor (0 = first button)
@@ -857,6 +882,7 @@ SCREENS = {
     0x14052B580: lobby_id,
     0x14052FF70: leaderboard_game,
     0x140530180: leaderboard,
+    0x1405290E8: move_list,
     0x14052FB10: lambda reader, obj: View("", 0, [Row(reader.msg.get("POP_GET_RANKING"))]),
     0x140529A28: fixed_list("CUSTOM_MATCH", [
         ("CREATE_LOBBY", "HELP_CREATE_LOBBY"),
