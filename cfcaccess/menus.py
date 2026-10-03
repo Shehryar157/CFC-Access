@@ -750,6 +750,24 @@ def lobby_settings(title_key, n_rows, searching):
     return resolve
 
 
+# ---- Online > Custom Match > Search Lobby ID ----
+# Six characters, each 0-9 then A-Z (36 values): +0x324 + 4*i, and +0x340
+# the selected position. Left/Right move, Up/Down change the character.
+ID_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+
+def lobby_id(reader, obj):
+    msg = reader.msg
+    chars = [ID_CHARS[_int(reader, obj + 0x324 + 4 * i) % 36] for i in range(6)]
+    pos = _int(reader, obj + 0x340)
+    if not 0 <= pos < 6:
+        return None
+    lobby = " ".join(chars)  # spaced so screen readers spell it out
+    rows = [Row(f"Character {i + 1}", c, f"ID: {lobby}. {msg.get('HELP_INPUT_LOBBY_ID')}")
+            for i, c in enumerate(chars)]
+    return View(msg.get("INPUT_LOBBY_ID"), pos, rows)
+
+
 # ---- Yes/No dialogs ("Exit the game?") ----
 #   +0x360 question message, +0x324 button count, +0x32C + 4*i button
 #   messages (36 = "Yes", 37 = "No"), +0x37C cursor (0 = first button)
@@ -809,6 +827,7 @@ SCREENS = {
     0x14052D4B0: match_setup,
     0x1405293D0: lobby_settings("CREATE_LOBBY", 10, searching=False),
     0x14052BEB8: lobby_settings("JOIN_LOBBY", 6, searching=True),
+    0x14052B580: lobby_id,
     0x140529A28: fixed_list("CUSTOM_MATCH", [
         ("CREATE_LOBBY", "HELP_CREATE_LOBBY"),
         ("JOIN_LOBBY", "HELP_JOIN_LOBBY"),
