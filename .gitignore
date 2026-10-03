@@ -4,3 +4,6 @@ dist/
 build/
 scratch/
 logs/
+loader/*.dll
+loader/*.lib
+loader/*.pdb
