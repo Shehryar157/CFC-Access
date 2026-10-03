@@ -186,7 +186,7 @@ KEY_NAMES.update({55 + i: f"F{i + 1}" for i in range(12)})
 def key_name(number):
     name = KEY_NAMES.get(number)
     if name is None:
-        print(f"UNKNOWN KEY NUMBER {number}")
+        log_once(f"UNKNOWN KEY NUMBER {number}")
         return f"key {number}"
     return name
 
@@ -230,8 +230,17 @@ PAUSE_ITEMS = {
     6: ("TRAINING_MENU", "HELP_TRAINING_MENU"),
     7: ("VERSUS_MENU", "HELP_VERSUS_MENU"),
     9: ("CHARA_CHANGE", "HELP_CHARA_CHANGE"),
+    10: ("LOAD", "HELP_LOAD"),                 # Load Quick Save (arcade mode)
+    11: ("SAVE", "HELP_SAVE"),                 # Quick Save: not seen yet, follows LOAD in the text
     12: ("QUIT", "HELP_QUIT"),
 }
+_logged = set()  # unknown ids already logged, so the log isn't flooded
+
+
+def log_once(message):
+    if message not in _logged:
+        _logged.add(message)
+        print(message)
 
 
 def find_task(reader, cls):
@@ -273,7 +282,7 @@ def pause_menu(reader, obj):
                 help_key = "HELP_QUIT_TR"
             rows.append(Row(msg.get(label), None, msg.get(help_key) if help_key else None))
         else:
-            print(f"UNKNOWN PAUSE ITEM {item}")
+            log_once(f"UNKNOWN PAUSE ITEM {item}")
             rows.append(Row(f"Option {item}"))
     return View(msg.get("PAUSE_MENU"), _int(reader, logic + 0x328), rows)
 
@@ -564,7 +573,7 @@ class MenuReader:
             self.pending = None
             self.last_view, self.last_layer = view, layer
             if view.title.startswith("Unknown screen"):
-                print(f"UNKNOWN SCREEN {view.title}")
+                log_once(f"UNKNOWN SCREEN {view.title}")
             speech.say(self.describe(view, with_title=True))
             return
         self.pending = None
