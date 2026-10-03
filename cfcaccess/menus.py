@@ -33,6 +33,7 @@ IGNORED_CLASSES = {
     0x14052FD58,  # invisible helper above Select Game
     0x14056E240,  # in-game overlay that always stays on top
     0x14052F6A0,  # pause menu logic object (briefly listed while closing)
+    0x1405A5660,  # online helper layer above the leaderboard
     # Appear together with the pause menu; probably its parts (to verify).
     0x1405314F0, 0x14052AE58, 0x14052F8E8,
     # Training mode displays (damage/combo counters, hitboxes, input log).
@@ -768,6 +769,32 @@ def lobby_id(reader, obj):
     return View(msg.get("INPUT_LOBBY_ID"), pos, rows)
 
 
+# ---- Online > Ranked Leaderboard > Select Game ----
+#   +0x320 game (Select Game order), +0x324 count
+def leaderboard_game(reader, obj):
+    msg = reader.msg
+    game, count = _int(reader, obj + 0x320), _int(reader, obj + 0x324)
+    if not 0 <= game < count <= 16:
+        return None
+    return View(msg.get("GAME_SELECT"), 0,
+                [Row("", f"{GAMES[game % len(GAMES)][-1][0]}, {game + 1} of {count}", msg.get("HELP_RANKING_SELECT"))])
+
+
+# ---- Online > Ranked Leaderboard ----
+#   +0x320 game (Select Game order); Ctrl / right Ctrl change it.
+# The entries are objects of class 0x140566388 laid out every 0x1D8 bytes
+# (name at +0xE0, League Points at +0x148), but no stable route to them or
+# to the highlighted row has been found yet.
+def leaderboard(reader, obj):
+    msg = reader.msg
+    game = _int(reader, obj + 0x320)
+    if not 0 <= game < len(GAMES):
+        return None
+    title = f"{msg.get('RANK_LEADERBOARD')}: {GAMES[game][-1][0]}"
+    return View(title, 0, [Row("The ranking list can't be read yet. Ctrl and right Ctrl change the game. "
+                               "Backspace goes back.")])
+
+
 # ---- Yes/No dialogs ("Exit the game?") ----
 #   +0x360 question message, +0x324 button count, +0x32C + 4*i button
 #   messages (36 = "Yes", 37 = "No"), +0x37C cursor (0 = first button)
@@ -828,6 +855,8 @@ SCREENS = {
     0x1405293D0: lobby_settings("CREATE_LOBBY", 10, searching=False),
     0x14052BEB8: lobby_settings("JOIN_LOBBY", 6, searching=True),
     0x14052B580: lobby_id,
+    0x14052FF70: leaderboard_game,
+    0x140530180: leaderboard,
     0x140529A28: fixed_list("CUSTOM_MATCH", [
         ("CREATE_LOBBY", "HELP_CREATE_LOBBY"),
         ("JOIN_LOBBY", "HELP_JOIN_LOBBY"),
