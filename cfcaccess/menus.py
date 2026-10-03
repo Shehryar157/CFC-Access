@@ -284,6 +284,36 @@ def versus_menu(reader, obj):
     return View(msg.get("VERSUS_MENU"), _int(reader, obj + 0x328), rows)
 
 
+# ---- Display & Sound Settings (from the pause menu) ----
+#   +0x320 cursor, +0x324 count; per row: +0x348 label message,
+#   +0x368 description message, +0x388 value
+WALLPAPER, SCREEN_FILTER, SCREEN_SIZE, SCREEN_ROTATE = 576, 581, 584, 590
+MUSIC_VOLUME, SE_VOLUME = 593, 594
+
+
+def _display_value(msg, label, value):
+    if label in (WALLPAPER, SCREEN_SIZE, SCREEN_ROTATE):
+        return msg.by_index(label + 1 + value)
+    if label == SCREEN_FILTER:
+        # The game shows "None", or "Type" plus a letter: 1 = Type A.
+        return msg.by_index(582) if value == 0 else f"{msg.by_index(583)} {chr(64 + value)}"
+    if label in (MUSIC_VOLUME, SE_VOLUME):
+        return f"{value} of 10"
+    return None
+
+
+def display_sound(reader, obj):
+    msg = reader.msg
+    count = _int(reader, obj + 0x324)
+    rows = []
+    for i in range(count):
+        label = _int(reader, obj + 0x348 + 4 * i)
+        rows.append(Row(msg.by_index(label, "?"),
+                        _display_value(msg, label, _int(reader, obj + 0x388 + 4 * i)),
+                        msg.by_index(_int(reader, obj + 0x368 + 4 * i))))
+    return View(msg.get("DISPLAY_SOUND_SETTINGS"), _int(reader, obj + 0x320), rows)
+
+
 # ---- Yes/No dialogs ("Exit the game?") ----
 #   +0x360 question message, +0x324 button count, +0x32C + 4*i button
 #   messages (36 = "Yes", 37 = "No"), +0x37C cursor (0 = first button)
@@ -325,6 +355,7 @@ SCREENS = {
     0x14052A9B0: pause_menu,
     0x140531700: versus_menu,
     0x140528D90: dialog,
+    0x14052E1A8: display_sound,
 }
 
 MISS_LIMIT = 6  # invalid reads in a row (at 20 a second) before a screen counts as gone
