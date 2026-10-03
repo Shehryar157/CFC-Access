@@ -24,11 +24,17 @@ from tools import win  # noqa: E402
 TYPES = {"u8": np.uint8, "u16": np.uint16, "i32": np.int32}
 
 
-def snapshot(game, only=None):
-    """Read every writable region (or just the regions in `only`)."""
+MAX_REGION = 16 << 20  # skip giant blocks (textures, sound, ROM copies) unless asked
+
+
+def snapshot(game, only=None, max_region=None):
+    """Read writable regions up to max_region bytes (or just those in `only`)."""
+    limit = MAX_REGION if max_region is None else max_region
     snap = {}
     for start, size, _ in memory.regions(game.pm.process_handle):
         if only is not None and start not in only:
+            continue
+        if only is None and size > limit:
             continue
         try:
             snap[start] = game.pm.read_bytes(start, size)
