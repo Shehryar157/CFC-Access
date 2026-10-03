@@ -1086,7 +1086,7 @@ class MenuReader:
                 cls = pm.read_ulonglong(obj)
             except Exception:
                 continue
-            if not EXE_START <= cls < EXE_END or cls in IGNORED_CLASSES:
+            if not EXE_START <= cls < EXE_END or cls % 8 or cls in IGNORED_CLASSES:
                 continue
             # Status +0x8: the 0x100 bit means asleep (closing or hidden).
             try:
