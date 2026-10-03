@@ -34,6 +34,7 @@ IGNORED_CLASSES = {
     0x14056E240,  # in-game overlay that always stays on top
     0x14052F6A0,  # pause menu logic object (briefly listed while closing)
     0x1405A5660,  # online helper layer above the leaderboard
+    0x14020B8B0,  # in-game helper layer above the pause menu
     # Appear together with the pause menu; probably its parts (to verify).
     0x1405314F0, 0x14052AE58, 0x14052F8E8,
     # Training mode displays (damage/combo counters, hitboxes, input log).
@@ -875,8 +876,17 @@ def move_list(reader, obj):
     if not 0 <= game < len(GAMES) or not 0 < count <= 64:
         return None
     records = [_int(reader, obj + 0x344 + 4 * i) for i in range(count)]
-    basic = reader.moves.record_character(game, records[0]) == BASIC_MOVES_CHARACTER
-    title = msg.get("BASIC_MOVES") if basic else msg.get("PLAYER_MOVES")
+    character = reader.moves.record_character(game, records[0])
+    if character == BASIC_MOVES_CHARACTER:
+        title = msg.get("BASIC_MOVES")
+    else:
+        # The move tables number characters like the Fighter Awards roster
+        # (checked: Hyper Street Fighter II, 0 = Ryu). Cyberbots' moves belong
+        # to robots while its roster lists pilots, so no name there.
+        name = None
+        if STATS_PREFIX[game] != "CYBOTS":
+            name = msg.get(f"STATS_{STATS_PREFIX[game]}_{character:02d}_NAME")
+        title = f"{name}: {msg.get('PLAYER_MOVES')}" if name else msg.get("PLAYER_MOVES")
     lines = [reader.moves.record_text(game, r) for r in records]
     page = ". ".join(l.rstrip(".") for l in lines if l) + "."
     return View(f"{title}, page {_int(reader, obj + 0x338) + 1}", 0, [Row(page)])
@@ -1035,16 +1045,9 @@ class MenuReader:
 
     def find_layer(self, cls):
         """Object of the open layer with this class anywhere in the stack, or None."""
-        pm = self.game.pm
-        try:
-            mgr = pm.read_ulonglong(self.game.base + MANAGER)
-            top = pm.read_int(mgr + LAYER_TOP)
-            for i in range(min(top, 31), -1, -1):
-                obj = pm.read_ulonglong(mgr + LAYER_BASE + LAYER_STRIDE * i)
-                if pm.read_ulonglong(obj) == cls:
-                    return obj
-        except Exception:
-            pass
+        for obj, c in self.open_layers():
+            if c == cls:
+                return obj
         return None
 
     def view(self, obj, cls):

@@ -94,4 +94,5 @@ class Nav:
             self.press("enter" if t is None else "backspace", hold=0.15)
             win.wait_for(lambda: self.title() == "Main Menu", 3)
             time.sleep(0.3)
-        raise NavError(f"could not reach the main menu (on {self.title()!r})")
+        if self.title() != "Main Menu":
+            raise NavError(f"could not reach the main menu (on {self.title()!r})")

@@ -81,8 +81,79 @@ def _send(scan, extended, up):
 
 _last_hwnd = None
 
+# ---- Telling the user when the script takes the keyboard ----
+# A high beep, then a short wait, before the first key press; the same beep
+# lower when the script is done (or pauses for a while between presses).
+WARN_PITCH, DONE_PITCH, BEEP_MS = 1200, 700, 90
+WARN_LEAD = 1.5          # seconds between the warning beep and the first press
+IDLE_GIVE_BACK = 3.0     # no presses for this long hands control back
+_holding = False
+_last_press = 0.0
+_idle_timer = None
+
+
+def _tone(pitch, ms=BEEP_MS, volume=0.25, rate=22050):
+    """A short sine-wave beep as WAV bytes, with soft edges so it doesn't click."""
+    import io, math, struct, wave
+    n = int(rate * ms / 1000)
+    fade = max(1, n // 8)
+    frames = bytearray()
+    for i in range(n):
+        env = min(1.0, i / fade, (n - i) / fade)
+        frames += struct.pack("<h", int(32767 * volume * env * math.sin(2 * math.pi * pitch * i / rate)))
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(rate)
+        w.writeframes(bytes(frames))
+    return buf.getvalue()
+
+
+def _beep(pitch):
+    """Play through the normal speakers (winsound.Beep needs a PC speaker)."""
+    try:
+        import winsound
+        winsound.PlaySound(_tone(pitch), winsound.SND_MEMORY)
+    except Exception:
+        pass
+
+
+def take_keyboard():
+    global _holding
+    if not _holding:
+        _beep(WARN_PITCH)
+        time.sleep(WARN_LEAD)
+        _holding = True
+
+
+def release_keyboard():
+    global _holding
+    if _idle_timer is not None:
+        _idle_timer.cancel()
+    if _holding:
+        _holding = False
+        _beep(DONE_PITCH)
+
+
+import atexit  # noqa: E402
+atexit.register(release_keyboard)  # runs when the script finishes, like a finally:
+
+
+def _restart_idle_timer():
+    """Each press restarts a countdown; if it runs out, we're done for now."""
+    global _idle_timer
+    import threading
+    if _idle_timer is not None:
+        _idle_timer.cancel()
+    _idle_timer = threading.Timer(IDLE_GIVE_BACK, release_keyboard)
+    _idle_timer.daemon = True
+    _idle_timer.start()
+
 
 def press(name, hold=0.1):
+    global _last_press
+    take_keyboard()
+    if _idle_timer is not None:
+        _idle_timer.cancel()
     # Key presses go to whatever window is in front, so make sure it's the game.
     if _last_hwnd and user32.GetForegroundWindow() != _last_hwnd:
         focus(_last_hwnd)
@@ -90,6 +161,8 @@ def press(name, hold=0.1):
     _send(scan, extended, False)
     time.sleep(hold)  # games poll input once per frame, so hold for a few frames
     _send(scan, extended, True)
+    _last_press = time.time()
+    _restart_idle_timer()
 
 
 def screenshot(hwnd, path):
