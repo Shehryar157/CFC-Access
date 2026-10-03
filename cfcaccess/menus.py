@@ -32,6 +32,7 @@ IGNORED_CLASSES = {
     0x1405A3830,  # in-game backdrop
     0x14052FD58,  # invisible helper above Select Game
     0x14056E240,  # in-game overlay that always stays on top
+    0x14052F6A0,  # pause menu logic object (briefly listed while closing)
     # Appear together with the pause menu; probably its parts (to verify).
     0x1405314F0, 0x14052AE58, 0x14052F8E8,
 }
@@ -44,6 +45,9 @@ class Row:
     label: str
     value: Optional[str] = None
     help: Optional[str] = None
+
+
+HIDDEN = object()  # a resolver's answer for "this layer isn't on screen"
 
 
 @dataclass
@@ -231,6 +235,10 @@ def pause_menu(reader, obj):
     logic = pm.read_ulonglong(obj + 0x790)
     if pm.read_ulonglong(logic) != PAUSE_LOGIC_CLASS:
         return None
+    # The pause menu isn't destroyed when it closes, only put to sleep: its
+    # logic object's status (+0x8) is 2 while open and 256 while hidden.
+    if _int(reader, logic + 0x8) & 0x100:
+        return HIDDEN
     count = _int(reader, logic + 0x32C)
     rows = []
     for i in range(count):
@@ -276,7 +284,8 @@ def versus_menu(reader, obj):
     return View(msg.get("VERSUS_MENU"), _int(reader, obj + 0x328), rows)
 
 
-# Screen class (vtable address) -> resolver. Message keys come from msg.arc's
+# Screen class (vtable address) -> resolver. A resolver returns HIDDEN for a
+# layer that exists but isn't on screen, so the layer below is read instead. Message keys come from msg.arc's
 # menu_eng (python -m cfcaccess.gmd <file> to browse them).
 SCREENS = {
     0x14052D278: fixed_list("MAIN_MENU", [
@@ -354,13 +363,16 @@ class MenuReader:
         them fails, so we skip down to the next layer.
         """
         layers = self.open_layers()
-        if not layers:
+        view = None
+        for layer in layers:
+            try:
+                view = self.view(*layer)
+            except Exception:
+                view = None
+            if view is not HIDDEN:
+                break
+        else:
             return None, None
-        layer = layers[0]
-        try:
-            view = self.view(*layer)
-        except Exception:
-            view = None
         if view is None:
             # Something we can't read yet. Say so rather than reading the
             # screen underneath it, which would be misleading.
