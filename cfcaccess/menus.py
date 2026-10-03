@@ -796,6 +796,42 @@ def leaderboard_game(reader, obj):
 # entries start at +0x58, every 0x1D8 bytes: name (UTF-8) at +0xE0,
 # League Points at +0x148. Your own row at the bottom isn't read yet.
 LEADERBOARD_BLOCK = (0x79F718, 0x240)
+# The league badge isn't stored: it follows from League Points. The game's
+# 20 minimum scores are at exe+LEAGUE_MINIMUMS; the names match the badge
+# pictures (checked on screen for Rookie, Super/Ultra Gold, Platinum, Ultra
+# Platinum, Diamond, Ultimate Grand Master and Warlord; the rest follow the
+# same pattern).
+LEAGUE_MINIMUMS = 0x669FB0
+LEAGUES = ["Rookie", "Bronze", "Super Bronze", "Ultra Bronze", "Silver", "Super Silver",
+           "Ultra Silver", "Gold", "Super Gold", "Ultra Gold", "Platinum", "Super Platinum",
+           "Ultra Platinum", "Diamond", "Super Diamond", "Ultra Diamond", "Master",
+           "Grand Master", "Ultimate Grand Master", "Warlord"]
+# Your own record (the row pinned at the bottom): name at +0xE0. Points are
+# assumed at +0x148 like the other entries (unverified: they were 0).
+OWN_RECORD = (0x668F140, 0x38, 0x230)
+
+
+def league(reader, points):
+    pm = reader.game.pm
+    name = LEAGUES[0]
+    for i, minimum in enumerate(LEAGUES):
+        if points >= pm.read_uint(reader.game.base + LEAGUE_MINIMUMS + 4 * i):
+            name = LEAGUES[i]
+    return name
+
+
+def own_entry(reader):
+    pm = reader.game.pm
+    try:
+        p = pm.read_ulonglong(reader.game.base + OWN_RECORD[0])
+        for off in OWN_RECORD[1:-1]:
+            p = pm.read_ulonglong(p + off)
+        rec = p + OWN_RECORD[-1]  # the record sits inside that object
+        name = pm.read_bytes(rec + LB_NAME, 64).split(bytes([0]), 1)[0].decode("utf-8", "replace")
+        points = pm.read_int(rec + LB_POINTS)
+    except Exception:
+        return ""
+    return f"You: {name}, {league(reader, points)}, {points} League Points" if name else ""
 LB_FIRST, LB_STRIDE, LB_NAME, LB_POINTS = 0x58, 0x1D8, 0xE0, 0x148
 
 
@@ -817,7 +853,8 @@ def leaderboard(reader, obj):
     if not name:
         return View(title, 0, [Row("No entries.")])
     # A single row whose value changes, so moving speaks the new entry.
-    return View(title, 0, [Row("", f"Rank {index + 1}: {name}, {points} League Points")])
+    return View(title, 0, [Row("", f"Rank {index + 1}: {name}, {league(reader, points)}, {points} League Points",
+                               own_entry(reader))])
 
 
 # ---- Pause > Move List ----
