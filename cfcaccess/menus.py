@@ -962,8 +962,13 @@ def move_list(reader, obj):
 # ---- Yes/No dialogs ("Exit the game?") ----
 #   +0x360 question message, +0x324 button count, +0x32C + 4*i button
 #   messages (36 = "Yes", 37 = "No"), +0x37C cursor (0 = first button)
+DIALOG_SHOWING = 1  # status +0x8: 1 while shown; 4 once closed (the layer can linger)
+
+
 def dialog(reader, obj):
     msg = reader.msg
+    if _int(reader, obj + 0x8) != DIALOG_SHOWING:
+        return HIDDEN
     count = _int(reader, obj + 0x324)
     if not 0 < count <= 4:
         return None
