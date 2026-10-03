@@ -241,19 +241,11 @@ def keyboard_settings(reader, obj):
 # Only ids seen on screen so far are named; others are spoken as "Option N".
 PAUSE_LOGIC_CLASS = 0x14052F6A0
 TASKS = 0x668EF90  # the game's list of running tasks ("units")
-PAUSE_ITEMS = {
-    0: ("CONTINUE", "HELP_CONTINUE"),
-    1: ("CONTINUE", "HELP_CONTINUE_TR"),       # Resume, in training mode
-    3: ("COMMAND_LIST", "HELP_COMMAND_LIST"),
-    4: ("PAD_SETTING", None),
-    5: ("DISPLAY_SOUND_SETTINGS", None),
-    6: ("TRAINING_MENU", "HELP_TRAINING_MENU"),
-    7: ("VERSUS_MENU", "HELP_VERSUS_MENU"),
-    9: ("CHARA_CHANGE", "HELP_CHARA_CHANGE"),
-    10: ("LOAD", "HELP_LOAD"),                 # Load Quick Save (arcade mode)
-    11: ("SAVE", "HELP_SAVE"),                 # Quick Save: not seen yet, follows LOAD in the text
-    12: ("QUIT", "HELP_QUIT"),
-}
+# The game's own tables, indexed by pause item id (0-12): the item's name
+# message, then its description message (Resume, Restart, Move List, ...,
+# Character Level, Load Quick Save, Quick Save, Quit).
+PAUSE_NAMES, PAUSE_HELPS, PAUSE_ITEM_COUNT = 0x675038, 0x675070, 13
+HELP_QUIT_TR = 270  # "Exit training mode." (the table only has "Exit the game.")
 _logged = set()  # unknown ids already logged, so the log isn't flooded
 
 
@@ -295,12 +287,14 @@ def pause_menu(reader, obj):
     items = [_int(reader, logic + 0x334 + 4 * i) for i in range(count)]
     training = 1 in items  # the training-mode Resume
     rows = []
+    base = reader.game.base
     for item in items:
-        if item in PAUSE_ITEMS:
-            label, help_key = PAUSE_ITEMS[item]
+        if 0 <= item < PAUSE_ITEM_COUNT:
+            name = msg.by_index(pm.read_uint(base + PAUSE_NAMES + 4 * item), "")
+            help_id = pm.read_uint(base + PAUSE_HELPS + 4 * item)
             if item == 12 and training:
-                help_key = "HELP_QUIT_TR"
-            rows.append(Row(msg.get(label), None, msg.get(help_key) if help_key else None))
+                help_id = HELP_QUIT_TR
+            rows.append(Row(name or f"Option {item}", None, msg.by_index(help_id)))
         else:
             log_once(f"UNKNOWN PAUSE ITEM {item}")
             rows.append(Row(f"Option {item}"))
