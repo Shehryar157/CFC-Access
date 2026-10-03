@@ -284,6 +284,18 @@ def versus_menu(reader, obj):
     return View(msg.get("VERSUS_MENU"), _int(reader, obj + 0x328), rows)
 
 
+# ---- Yes/No dialogs ("Exit the game?") ----
+#   +0x360 question message, +0x324 button count, +0x32C + 4*i button
+#   messages (36 = "Yes", 37 = "No"), +0x37C cursor (0 = first button)
+def dialog(reader, obj):
+    msg = reader.msg
+    count = _int(reader, obj + 0x324)
+    if not 0 < count <= 4:
+        return None
+    rows = [Row(msg.by_index(_int(reader, obj + 0x32C + 4 * i), "?")) for i in range(count)]
+    return View(msg.by_index(_int(reader, obj + 0x360), ""), _int(reader, obj + 0x37C), rows)
+
+
 # Screen class (vtable address) -> resolver. A resolver returns HIDDEN for a
 # layer that exists but isn't on screen, so the layer below is read instead. Message keys come from msg.arc's
 # menu_eng (python -m cfcaccess.gmd <file> to browse them).
@@ -312,6 +324,7 @@ SCREENS = {
     0x14052E5C8: keyboard_settings,
     0x14052A9B0: pause_menu,
     0x140531700: versus_menu,
+    0x140528D90: dialog,
 }
 
 MISS_LIMIT = 6  # invalid reads in a row (at 20 a second) before a screen counts as gone
@@ -448,7 +461,8 @@ class MenuReader:
     def describe(self, view, with_title):
         parts = []
         if with_title and view.title:
-            parts.append(view.title + ".")
+            title = view.title
+            parts.append(title if title[-1] in ".?!:" else title + ".")
         row = view.rows[view.cursor]
         label = f"{row.label}: {row.value}" if row.value else row.label
         parts.append(f"{label}, {view.cursor + 1} of {len(view.rows)}.")

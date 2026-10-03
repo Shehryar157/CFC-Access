@@ -24,6 +24,21 @@ def main(keys):
     win.focus(hwnd)
     for key in keys:
         said.clear()
+        if key.startswith("goto:"):
+            # Move until the mod itself reads this row, so a later Enter is safe.
+            target = int(key[5:])
+            for _ in range(20):
+                view = reader.top_view()[1]
+                if view is None or view.cursor == target:
+                    break
+                win.press("down" if view.cursor < target else "up")
+                win.wait_for(lambda: (reader.top_view()[1] or view).cursor != view.cursor, 0.8)
+            view = reader.top_view()[1]
+            if view is None or view.cursor != target:
+                sys.exit(f"could not reach row {target}; stopping")
+            reader.poll()
+            print(f"{key:10} {' | '.join(said) or '(silent)'}")
+            continue
         win.press(key, hold=0.15)
         deadline = time.time() + 1.2
         while time.time() < deadline:  # poll like the real mod, 20x a second
