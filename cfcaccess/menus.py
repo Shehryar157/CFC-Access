@@ -146,6 +146,58 @@ def game_settings(reader, obj):
     )
 
 
+# ---- Keyboard Settings pop-up (Y on Select Game) ----
+#   +0x324  cursor: 0 = Key Bindings (layout type), 1..n = bindings, n+1 = Default
+#   +0x36C  number of bindings (n); +0x370 layout type (Type A, B, Custom A, B)
+#   +0x374 + 0x40*type + 4*i   key number bound to binding i
+# Bindings are Menu, Start, Coin, Left, Up, Right, Down, then the selected
+# game's buttons, named by that game's CMD_NAME_<prefix>_FF_01.. messages.
+SELECT_GAME_CLASS = 0x140530800
+FIXED_BINDINGS = ["MENU_OP_PAD_MENU", "MENU_OP_PAD_START", "MENU_OP_PAD_COIN",
+                  "MENU_KBD_LEFT", "MENU_KBD_UP", "MENU_KBD_RIGHT", "MENU_KBD_DOWN"]
+# Select Game's game number -> prefix of its button-name messages.
+BUTTON_PREFIX = ["VAMP", "VAMP", "VAMP", "VAMP", "VAMP",
+                 "CYBOTS", "SPF2X", "SGEMF", "HSF2", "WZARD"]
+
+# The game's own key numbers. Worked out from the key icons shown on screen
+# for known numbers; unknown ones are spoken as "key N" (and logged).
+KEY_NAMES = {7: "Alt", 13: "Left Arrow", 14: "Up Arrow", 15: "Right Arrow", 16: "Down Arrow"}
+KEY_NAMES.update({29 + i: chr(ord("A") + i) for i in range(26)})
+KEY_NAMES.update({55 + i: f"F{i + 1}" for i in range(12)})
+
+
+def key_name(number):
+    name = KEY_NAMES.get(number)
+    if name is None:
+        print(f"UNKNOWN KEY NUMBER {number}")
+        return f"key {number}"
+    return name
+
+
+def keyboard_settings(reader, obj):
+    msg = reader.msg
+    count = _int(reader, obj + 0x36C)
+    layout = _int(reader, obj + 0x370)
+    select = reader.find_layer(SELECT_GAME_CLASS)
+    game = _int(reader, select + 0x328) if select else 0
+    prefix = BUTTON_PREFIX[game % len(BUTTON_PREFIX)]
+    labels = [msg.get(k) for k in FIXED_BINDINGS]
+    labels += [msg.get(f"CMD_NAME_{prefix}_FF_{i:02d}", f"Button {i}")
+               for i in range(1, count - len(FIXED_BINDINGS) + 1)]
+    rows = [Row(msg.get("MENU_KBD_TYPE"), msg.get(f"MENU_OP_PAD_TYPE_{layout:02d}"),
+                msg.get("HELP_KBD_TYPE"))]
+    for i in range(count):
+        key = _int(reader, obj + 0x374 + 0x40 * layout + 4 * i)
+        rows.append(Row(labels[i] if i < len(labels) else f"Binding {i + 1}",
+                        key_name(key), msg.get("HELP_KBD_KEY")))
+    rows.append(Row(msg.get("MENU_OP_DEFAULT"), None, msg.get("HELP_OP_DEFAULT")))
+    # The game numbers Default as 15 whatever the number of bindings.
+    cursor = _int(reader, obj + 0x324)
+    if cursor > count:
+        cursor = len(rows) - 1
+    return View(msg.get("MENU_KBD_SETTINGS"), cursor, rows)
+
+
 # Screen class (vtable address) -> resolver. Message keys come from msg.arc's
 # menu_eng (python -m cfcaccess.gmd <file> to browse them).
 SCREENS = {
@@ -170,6 +222,7 @@ SCREENS = {
     ]),
     0x140530800: select_game,
     0x14052E3B8: game_settings,
+    0x14052E5C8: keyboard_settings,
 }
 
 MISS_LIMIT = 6  # invalid reads in a row (at 20 a second) before a screen counts as gone
@@ -204,6 +257,20 @@ class MenuReader:
                 continue
             if EXE_START <= cls < EXE_END and cls not in (CLOSED_CLASS, BACKDROP_CLASS):
                 return obj, cls
+        return None
+
+    def find_layer(self, cls):
+        """Object of the open layer with this class anywhere in the stack, or None."""
+        pm = self.game.pm
+        try:
+            mgr = pm.read_ulonglong(self.game.base + MANAGER)
+            top = pm.read_int(mgr + LAYER_TOP)
+            for i in range(min(top, 31), -1, -1):
+                obj = pm.read_ulonglong(mgr + LAYER_BASE + LAYER_STRIDE * i)
+                if pm.read_ulonglong(obj) == cls:
+                    return obj
+        except Exception:
+            pass
         return None
 
     def view(self, obj, cls):
