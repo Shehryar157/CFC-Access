@@ -10,7 +10,7 @@ import sys
 import time
 
 from cfcaccess import game as game_mod
-from cfcaccess import menus, speech, text
+from cfcaccess import arcade_games, menus, speech, text
 
 POLL_SECONDS = 0.05  # check the game 20 times a second
 STARTUP_WAIT = 120   # --with-game: give up if the game hasn't appeared by then
@@ -40,8 +40,10 @@ def play_session(messages, game):
     speech.say("Connected to Capcom Fighting Collection.")
     print(f"pid={game.pid} base={game.base:#x}")
     reader = menus.MenuReader(game, messages)
+    arcade_reader = arcade_games.ArcadeReader(game, messages)
     while game.is_running():
         reader.poll()
+        arcade_reader.poll()
         time.sleep(POLL_SECONDS)
     print("game closed")
 
