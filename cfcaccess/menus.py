@@ -864,6 +864,11 @@ def leaderboard(reader, obj):
 # There is no row highlight (Up/Down scroll), and a page mostly fits on
 # screen, so the whole page is read as one announcement when it opens.
 BASIC_MOVES_CHARACTER = 127
+# Cyberbots' move tables are per robot, in the order of the robot name list
+# in the exe (Blodia, Reptos, Fordy, Guldin, Swordsman ...; checked against
+# each robot's first special move). Each maps to its STATS_CYBOTS roster
+# entry, so the name comes from the (translatable) text file.
+CYBOTS_ROBOT_ROSTER = [6, 9, 12, 15, 7, 11, 10, 16, 17, 8, 13, 20, 18, 19, 21, 14]
 
 
 def move_list(reader, obj):
@@ -881,10 +886,12 @@ def move_list(reader, obj):
         title = msg.get("BASIC_MOVES")
     else:
         # The move tables number characters like the Fighter Awards roster
-        # (checked: Hyper Street Fighter II, 0 = Ryu). Cyberbots' moves belong
-        # to robots while its roster lists pilots, so no name there.
+        # (checked: Hyper Street Fighter II, 0 = Ryu); Cyberbots uses robots.
         name = None
-        if STATS_PREFIX[game] != "CYBOTS":
+        if STATS_PREFIX[game] == "CYBOTS":
+            if character < len(CYBOTS_ROBOT_ROSTER):
+                name = msg.get(f"STATS_CYBOTS_{CYBOTS_ROBOT_ROSTER[character]:02d}_NAME")
+        else:
             name = msg.get(f"STATS_{STATS_PREFIX[game]}_{character:02d}_NAME")
         title = f"{name}: {msg.get('PLAYER_MOVES')}" if name else msg.get("PLAYER_MOVES")
     lines = [reader.moves.record_text(game, r) for r in records]
