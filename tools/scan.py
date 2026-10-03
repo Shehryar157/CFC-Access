@@ -52,6 +52,7 @@ def describe(game, address):
 LAYOUTS = {
     "main": (215, 156, 53.3, 6),          # main menu, options, museum
     "gamesettings": (195, 245, 53.3, 6),  # Game Settings pop-up
+    "pause": (232, 178, 53.3, 7),         # in-game pause menu
 }
 layout = "main"
 

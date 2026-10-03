@@ -25,7 +25,17 @@ from . import speech
 MANAGER = 0x668E670
 LAYER_TOP, LAYER_BASE, LAYER_STRIDE = 0xE0, 0xE8, 16
 CLOSED_CLASS = 0x1405215E0
-BACKDROP_CLASS = 0x14052D048
+# Open layers that never hold a menu (backdrops and invisible helpers).
+IGNORED_CLASSES = {
+    0x1405215E0,  # closed pop-up
+    0x14052D048,  # menu backdrop
+    0x1405A3830,  # in-game backdrop
+    0x14052FD58,  # invisible helper above Select Game
+    0x14056E240,  # in-game overlay that always stays on top
+    # Appear together with the pause menu; probably its parts (to verify).
+    0x1405314F0, 0x14052AE58, 0x14052F8E8,
+}
+MAX_LAYERS = 24
 EXE_START, EXE_END = 0x140000000, 0x147800000
 
 
@@ -198,6 +208,73 @@ def keyboard_settings(reader, obj):
     return View(msg.get("MENU_KBD_SETTINGS"), cursor, rows)
 
 
+# ---- In-game pause menu (Menu key, F2 by default) ----
+# The layer object points at +0x790 to the menu's logic object, which has
+# the cursor (+0x328), item count (+0x32C) and item ids (+0x334 + 4*i).
+# The ids index a fixed list of possible items; each mode shows a subset.
+# Only ids seen on screen so far are named; others are spoken as "Option N".
+PAUSE_LOGIC_CLASS = 0x14052F6A0
+PAUSE_ITEMS = {
+    0: ("CONTINUE", "HELP_CONTINUE"),
+    3: ("COMMAND_LIST", "HELP_COMMAND_LIST"),
+    4: ("PAD_SETTING", None),
+    5: ("DISPLAY_SOUND_SETTINGS", None),
+    7: ("VERSUS_MENU", "HELP_VERSUS_MENU"),
+    9: ("CHARA_CHANGE", "HELP_CHARA_CHANGE"),
+    12: ("QUIT", "HELP_QUIT"),
+}
+
+
+def pause_menu(reader, obj):
+    msg = reader.msg
+    pm = reader.game.pm
+    logic = pm.read_ulonglong(obj + 0x790)
+    if pm.read_ulonglong(logic) != PAUSE_LOGIC_CLASS:
+        return None
+    count = _int(reader, logic + 0x32C)
+    rows = []
+    for i in range(count):
+        item = _int(reader, logic + 0x334 + 4 * i)
+        if item in PAUSE_ITEMS:
+            label, help_key = PAUSE_ITEMS[item]
+            rows.append(Row(msg.get(label), None, msg.get(help_key) if help_key else None))
+        else:
+            print(f"UNKNOWN PAUSE ITEM {item}")
+            rows.append(Row(f"Option {item}"))
+    return View(msg.get("PAUSE_MENU"), _int(reader, logic + 0x328), rows)
+
+
+# ---- Versus Menu (from the pause menu) ----
+#   +0x324 cursor, +0x32C count, +0x330 + 4*row option id,
+#   +0x350 + 4*id current value
+VERSUS_OPTIONS = {
+    0: ("VS_PLAYER", "HELP_VS_PLAYER", None),
+    1: ("LOBBY_ROUND", "HELP_LOBBY_ROUND", "LOBBY_ROUND_{:02d}"),
+    2: ("LOBBY_SPMOVE", "HELP_LOBBY_SPMOVE", "LOBBY_SPMOVE_{:02d}"),
+    3: ("MENU_OP_DEFAULT", "HELP_OP_DEFAULT", None),
+}
+OPPONENT_VALUES = {0: "DUMMY_ACTION_06"}  # "CPU"; other values not seen yet
+
+
+def versus_menu(reader, obj):
+    msg = reader.msg
+    count = _int(reader, obj + 0x32C)
+    rows = []
+    for i in range(count):
+        oid = _int(reader, obj + 0x330 + 4 * i)
+        label, help_key, values = VERSUS_OPTIONS.get(oid, (None, None, None))
+        value = _int(reader, obj + 0x350 + 4 * oid)
+        if oid == 0:
+            text = msg.get(OPPONENT_VALUES[value]) if value in OPPONENT_VALUES else f"value {value}"
+        elif values:
+            text = msg.get(values.format(value), f"value {value}")
+        else:
+            text = None
+        rows.append(Row(msg.get(label, f"Option {oid}") if label else f"Option {oid}", text,
+                        msg.get(help_key) if help_key else None))
+    return View(msg.get("VERSUS_MENU"), _int(reader, obj + 0x324), rows)
+
+
 # Screen class (vtable address) -> resolver. Message keys come from msg.arc's
 # menu_eng (python -m cfcaccess.gmd <file> to browse them).
 SCREENS = {
@@ -223,6 +300,8 @@ SCREENS = {
     0x140530800: select_game,
     0x14052E3B8: game_settings,
     0x14052E5C8: keyboard_settings,
+    0x14052A9B0: pause_menu,
+    0x140531700: versus_menu,
 }
 
 MISS_LIMIT = 6  # invalid reads in a row (at 20 a second) before a screen counts as gone
@@ -239,25 +318,59 @@ class MenuReader:
         self.last_view = None   # the View last spoken
         self.misses = 0         # invalid reads in a row
 
-    def top_layer(self):
-        """(object, class) of the topmost open screen layer, or None."""
+    def open_layers(self):
+        """(object, class) of each open layer, topmost first.
+
+        The list of slots ends at the first empty one. (The number at +0xE0
+        matched the menus but not in-game, so we don't rely on it.)
+        """
         pm = self.game.pm
         try:
             mgr = pm.read_ulonglong(self.game.base + MANAGER)
-            top = pm.read_int(mgr + LAYER_TOP)
         except Exception:
-            return None
-        if not 0 <= top < 32:
-            return None
-        for i in range(top, -1, -1):
+            return []
+        layers = []
+        for i in range(MAX_LAYERS):
             try:
                 obj = pm.read_ulonglong(mgr + LAYER_BASE + LAYER_STRIDE * i)
+            except Exception:
+                break
+            if obj == 0:
+                break
+            try:
                 cls = pm.read_ulonglong(obj)
             except Exception:
                 continue
-            if EXE_START <= cls < EXE_END and cls not in (CLOSED_CLASS, BACKDROP_CLASS):
-                return obj, cls
-        return None
+            if EXE_START <= cls < EXE_END and cls not in IGNORED_CLASSES:
+                layers.append((obj, cls))
+        layers.reverse()
+        return layers
+
+    def top_view(self):
+        """The topmost layer we can read as a menu, as ((object, class), View).
+
+        Some open layers are invisible helpers with no menu in them; reading
+        them fails, so we skip down to the next layer.
+        """
+        layers = self.open_layers()
+        if not layers:
+            return None, None
+        layer = layers[0]
+        try:
+            view = self.view(*layer)
+        except Exception:
+            view = None
+        if view is None:
+            # Something we can't read yet. Say so rather than reading the
+            # screen underneath it, which would be misleading.
+            view = View(f"Unknown screen {layer[1]:#x}", 0, [Row("not readable yet")])
+        if not 0 <= view.cursor < len(view.rows):
+            return None, None
+        return layer, view
+
+    def top_layer(self):
+        """(object, class) of the topmost readable layer, or None."""
+        return self.top_view()[0]
 
     def find_layer(self, cls):
         """Object of the open layer with this class anywhere in the stack, or None."""
@@ -288,14 +401,8 @@ class MenuReader:
 
     def poll(self):
         """Check the menu once; speak if the screen, cursor or a value changed."""
-        layer = self.top_layer()
-        view = None
-        if layer is not None:
-            try:
-                view = self.view(*layer)
-            except Exception:
-                view = None
-        if view is None or not 0 <= view.cursor < len(view.rows):
+        layer, view = self.top_view()
+        if view is None:
             # During animations a read can be briefly invalid. Only forget the
             # screen (so it's announced afresh) after several misses in a row.
             self.misses += 1

@@ -11,13 +11,13 @@ import time
 sys.path.insert(0, __file__.rsplit("tools", 1)[0])
 from PIL import Image  # noqa: E402
 
-from cfcaccess import menus  # noqa: E402
+from cfcaccess import menus, text  # noqa: E402
 from tools import win  # noqa: E402
 
 
 def current(game):
     """(object, class, cursor, count) of the top open layer, as the mod sees it."""
-    reader = menus.MenuReader(game, None)
+    reader = menus.MenuReader(game, text.Messages())
     layer = reader.top_layer()
     if layer is None:
         return None
