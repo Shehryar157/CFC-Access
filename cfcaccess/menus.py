@@ -531,6 +531,34 @@ def award_stats(reader, obj):
     return View(msg.get("AWARD_STATS"), 0, [Row(summary)])
 
 
+# ---- Options > PC Settings ----
+#   +0x320 cursor, +0x324 count, +0x328 resolution index, +0x32C display
+#   mode (225 + n: Windowed, Borderless Windowed, Fullscreen), +0x330 VSync
+#   (0 Off, 1 On), +0x348 number of resolutions, +0x3C8 + 8*n pointer to
+#   resolution n, whose record starts with its name ("1280x720").
+def _c_string(reader, addr, limit=32):
+    raw = reader.game.pm.read_bytes(addr, limit)
+    return raw.split(b"\0", 1)[0].decode("ascii", "replace")
+
+
+def pc_settings(reader, obj):
+    msg = reader.msg
+    pm = reader.game.pm
+    res, disp, vsync = (_int(reader, obj + o) for o in (0x328, 0x32C, 0x330))
+    n_res = _int(reader, obj + 0x348)
+    res_text = f"resolution {res + 1}"
+    if 0 <= res < n_res <= 64:
+        res_text = _c_string(reader, pm.read_ulonglong(obj + 0x3C8 + 8 * res)) or res_text
+    rows = [
+        Row(msg.get("MENU_OP_PC_RESO"), res_text, msg.get("HELP_OP_PC_RESO")),
+        Row(msg.get("MENU_OP_PC_DISP"), msg.by_index(225 + disp, f"mode {disp}"), msg.get("HELP_OP_PC_DISP")),
+        Row(msg.get("MENU_OP_PC_VSYNC"), msg.get("MENU_OP_ENABLE" if vsync else "MENU_OP_DISABLE"),
+            msg.get("HELP_OP_PC_VSYNC")),
+        Row(msg.get("MENU_OP_DEFAULT"), None, msg.get("HELP_OP_DEFAULT")),
+    ]
+    return View(msg.get("MENU_OP_PC"), _int(reader, obj + 0x320), rows)
+
+
 # ---- Yes/No dialogs ("Exit the game?") ----
 #   +0x360 question message, +0x324 button count, +0x32C + 4*i button
 #   messages (36 = "Yes", 37 = "No"), +0x37C cursor (0 = first button)
@@ -580,6 +608,7 @@ SCREENS = {
     0x14052E800: options_network,
     0x140527BC0: fighter_awards,
     0x140528070: award_stats,
+    0x14052EC50: pc_settings,
 }
 
 MISS_LIMIT = 6  # invalid reads in a row (at 20 a second) before a screen counts as gone
