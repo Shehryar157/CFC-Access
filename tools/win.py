@@ -63,10 +63,11 @@ def find_window(pid):
 def focus(hwnd):
     global _last_hwnd
     _last_hwnd = hwnd
-    # Windows only lets the foreground app hand focus around; tapping Alt
-    # first is the usual workaround for a background script.
-    user32.keybd_event(0x12, 0, 0, 0)
-    user32.keybd_event(0x12, 0, KEYEVENTF_KEYUP, 0)
+    # Windows only lets the foreground app hand focus around; tapping a key
+    # first is the usual workaround for a background script. Not Alt: that's
+    # the game's Coin key. F24 exists in Windows but on no real keyboard.
+    user32.keybd_event(0x87, 0, 0, 0)
+    user32.keybd_event(0x87, 0, KEYEVENTF_KEYUP, 0)
     user32.SetForegroundWindow(hwnd)
     time.sleep(0.2)
 

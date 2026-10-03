@@ -37,7 +37,7 @@ IGNORED_CLASSES = {
     0x1405314F0, 0x14052AE58, 0x14052F8E8,
 }
 MAX_LAYERS = 24
-EXE_START, EXE_END = 0x140000000, 0x147800000
+EXE_START, EXE_END = 0x140100000, 0x147800000  # vtables live well past the exe header
 
 
 @dataclass
@@ -314,6 +314,24 @@ def display_sound(reader, obj):
     return View(msg.get("DISPLAY_SOUND_SETTINGS"), _int(reader, obj + 0x320), rows)
 
 
+# ---- Select Mode pop-up (Enter on Select Game) ----
+#   +0x320 game number, +0x328 position in the mode list, +0x32C number of
+#   modes, +0x330 + 4*i mode ids (0 Arcade, 1 Versus, 2 Training, 3 Training
+#   (Boss)); text = message MODE_ARCADE + id
+MODE_ARCADE = 3059
+
+
+def select_mode(reader, obj):
+    msg = reader.msg
+    count = _int(reader, obj + 0x32C)
+    pos = _int(reader, obj + 0x328)
+    if not 0 < count <= 8 or not 0 <= pos < count:
+        return None
+    mode = _int(reader, obj + 0x330 + 4 * pos)
+    return View(msg.get("MODE_SELECT"), 0,
+                [Row("", msg.by_index(MODE_ARCADE + mode, f"Mode {mode}"), msg.get("HELP_MODE_SELECT"))])
+
+
 # ---- Yes/No dialogs ("Exit the game?") ----
 #   +0x360 question message, +0x324 button count, +0x32C + 4*i button
 #   messages (36 = "Yes", 37 = "No"), +0x37C cursor (0 = first button)
@@ -356,6 +374,7 @@ SCREENS = {
     0x140531700: versus_menu,
     0x140528D90: dialog,
     0x14052E1A8: display_sound,
+    0x140530A38: select_mode,
 }
 
 MISS_LIMIT = 6  # invalid reads in a row (at 20 a second) before a screen counts as gone
@@ -513,8 +532,14 @@ class MenuReader:
             title = view.title
             parts.append(title if title[-1] in ".?!:" else title + ".")
         row = view.rows[view.cursor]
-        label = f"{row.label}: {row.value}" if row.value else row.label
-        parts.append(f"{label}, {view.cursor + 1} of {len(view.rows)}.")
+        if row.label and row.value:
+            label = f"{row.label}: {row.value}"
+        else:
+            label = row.label or row.value or ""
+        if len(view.rows) > 1:
+            parts.append(f"{label}, {view.cursor + 1} of {len(view.rows)}.")
+        else:
+            parts.append(f"{label}.")
         if row.help:
             parts.append(row.help)
         return " ".join(parts)
