@@ -647,6 +647,31 @@ def gallery_viewer(reader, obj):
     return View(title, 0, [Row("", f"Picture {pic + 1} of {count}")])
 
 
+# ---- Online Play menu ----
+#   +0x320 cursor, +0x324 count, +0x328 + 4*row item id
+ONLINE_ITEMS = {
+    0: ("CASUAL_MATCH", "HELP_CASUAL_MATCH"),
+    1: ("RANK_MATCH", "HELP_RANK_MATCH"),
+    2: ("CUSTOM_MATCH", "HELP_CUSTOM_MATCH"),
+    3: ("RANK_LEADERBOARD", "HELP_RANK_LEADERBOARD"),
+    4: ("ONLINE_OPTION", "HELP_ONLINE_OPTION"),
+}
+
+
+def online_menu(reader, obj):
+    msg = reader.msg
+    count = _int(reader, obj + 0x324)
+    if not 0 < count <= 8:
+        return None
+    rows = []
+    for i in range(count):
+        item = _int(reader, obj + 0x328 + 4 * i)
+        label, help_key = ONLINE_ITEMS.get(item, (None, None))
+        rows.append(Row(msg.get(label, f"Option {item}") if label else f"Option {item}", None,
+                        msg.get(help_key) if help_key else None))
+    return View(msg.get("ONLINE_PLAY"), _int(reader, obj + 0x320), rows)
+
+
 # ---- Yes/No dialogs ("Exit the game?") ----
 #   +0x360 question message, +0x324 button count, +0x32C + 4*i button
 #   messages (36 = "Yes", 37 = "No"), +0x37C cursor (0 = first button)
@@ -702,6 +727,7 @@ SCREENS = {
     0x14052A090: gallery_viewer,
     0x14052DD48: music_select,
     0x140530C48: music_tracks,
+    0x14052DF70: online_menu,
     0x14052A2D0: None,  # drawing helper of the picture viewer
 }
 
