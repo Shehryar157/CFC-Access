@@ -581,6 +581,52 @@ def gallery_select(reader, obj):
     return View(msg.get("GALLERY"), 0, [Row("", f"{name}, {sel + 1} of {count}", msg.get("HELP_GALLERY"))])
 
 
+# ---- Museum > Music (choose a soundtrack) ----
+# Same layout as the gallery picker (+0x32C selected, +0x330 count = 9), but
+# Vampire Hunter 2 and Vampire Savior 2 have no soundtrack entry.
+MUSIC_ALBUMS = [None, 0, 1, 2, 5, 6, 7, 8, 9]  # None = the collection; else GAMES index
+
+
+def music_select(reader, obj):
+    msg = reader.msg
+    sel, count = _int(reader, obj + 0x32C), _int(reader, obj + 0x330)
+    if not 0 <= sel < count <= 16:
+        return None
+    album = MUSIC_ALBUMS[sel] if sel < len(MUSIC_ALBUMS) else None
+    name = msg.get("GAME_NAME_E") if album is None else GAMES[album][-1][0]
+    return View(msg.get("SOUND"), 0, [Row("", f"{name}, {sel + 1} of {count}", msg.get("HELP_SOUND"))])
+
+
+# ---- Museum > Music > track list ----
+#   +0x32C first track shown in the scrolling window, +0x330 row within the
+#   window (selected track = both added), +0x334 number of tracks.
+# Track n is SOUND_<prefix>_<nn>, already numbered ("01. Opening Title").
+# Track lengths and the play/pause state are drawn but not read yet.
+MUSIC_SELECT_CLASS = 0x14052DD48
+MUSIC_TRACKS = [23, 44, 65, 74, 51, 23, 33, 58, 66]  # tracks per album, same order
+MUSIC_PREFIX = ["JACK", "VAMP", "VHUNT", "VSAV", "CYBOTS", "SPF2X", "PFIGHT", "HSF2", "WARZARD"]
+
+
+def music_tracks(reader, obj):
+    msg = reader.msg
+    count = _int(reader, obj + 0x334)
+    if not 0 < count <= 200:
+        return None
+    select = reader.find_layer(MUSIC_SELECT_CLASS)
+    album = _int(reader, select + 0x32C) % len(MUSIC_PREFIX) if select else 0
+    # The picker underneath can read wrong for a moment during transitions;
+    # each soundtrack has its own track count, so check against that.
+    if MUSIC_TRACKS[album] != count:
+        matches = [i for i, n in enumerate(MUSIC_TRACKS) if n == count]
+        if matches:
+            album = matches[0]
+    prefix = MUSIC_PREFIX[album]
+    entry = MUSIC_ALBUMS[album % len(MUSIC_ALBUMS)]
+    title = msg.get("GAME_NAME_E") if entry is None else GAMES[entry][-1][0]
+    rows = [Row(msg.get(f"SOUND_{prefix}_{n:02d}", f"Track {n + 1}")) for n in range(count)]
+    return View(title, _int(reader, obj + 0x32C) + _int(reader, obj + 0x330), rows)
+
+
 # ---- Museum > Gallery > picture viewer ----
 #   +0x320 picture number (from 0), +0x324 number of pictures.
 # Ctrl / right Ctrl: previous / next. The caption ("001. Main Key Art
@@ -654,6 +700,8 @@ SCREENS = {
     0x1405297F8: credits,
     0x14052DB10: gallery_select,
     0x14052A090: gallery_viewer,
+    0x14052DD48: music_select,
+    0x140530C48: music_tracks,
     0x14052A2D0: None,  # drawing helper of the picture viewer
 }
 
