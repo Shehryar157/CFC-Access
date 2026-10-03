@@ -559,6 +559,16 @@ def pc_settings(reader, obj):
     return View(msg.get("MENU_OP_PC"), _int(reader, obj + 0x320), rows)
 
 
+# ---- Options > Credits ----
+# The credits scroll by as pictures (credit.arc textures); there is no text
+# to read, so we just say what the screen is. Reading them would need OCR.
+def credits(reader, obj):
+    msg = reader.msg
+    return View(msg.get("MENU_OP_CREDITS"), 0,
+                [Row("The credits are scrolling. They are pictures, so CFC Access can't read them yet. "
+                     "Press Backspace to go back.")])
+
+
 # ---- Yes/No dialogs ("Exit the game?") ----
 #   +0x360 question message, +0x324 button count, +0x32C + 4*i button
 #   messages (36 = "Yes", 37 = "No"), +0x37C cursor (0 = first button)
@@ -609,6 +619,7 @@ SCREENS = {
     0x140527BC0: fighter_awards,
     0x140528070: award_stats,
     0x14052EC50: pc_settings,
+    0x1405297F8: credits,
 }
 
 MISS_LIMIT = 6  # invalid reads in a row (at 20 a second) before a screen counts as gone
