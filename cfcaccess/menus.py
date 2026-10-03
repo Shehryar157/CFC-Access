@@ -161,6 +161,7 @@ def game_settings(reader, obj):
 
 
 # ---- Keyboard Settings pop-up (Y on Select Game) ----
+#   +0x320  game number (as on Select Game: 5 = Cyberbots)
 #   +0x324  cursor: 0 = Key Bindings (layout type), 1..n = bindings, n+1 = Default
 #   +0x36C  number of bindings (n); +0x370 layout type (Type A, B, Custom A, B)
 #   +0x374 + 0x40*type + 4*i   key number bound to binding i
@@ -192,8 +193,7 @@ def keyboard_settings(reader, obj):
     msg = reader.msg
     count = _int(reader, obj + 0x36C)
     layout = _int(reader, obj + 0x370)
-    select = reader.find_layer(SELECT_GAME_CLASS)
-    game = _int(reader, select + 0x328) if select else 0
+    game = _int(reader, obj + 0x320)  # the pop-up keeps the game number itself
     prefix = BUTTON_PREFIX[game % len(BUTTON_PREFIX)]
     labels = [msg.get(k) for k in FIXED_BINDINGS]
     labels += [msg.get(f"CMD_NAME_{prefix}_FF_{i:02d}", f"Button {i}")
@@ -395,8 +395,15 @@ class MenuReader:
                 cls = pm.read_ulonglong(obj)
             except Exception:
                 continue
-            if EXE_START <= cls < EXE_END and cls not in IGNORED_CLASSES:
-                layers.append((obj, cls))
+            if not EXE_START <= cls < EXE_END or cls in IGNORED_CLASSES:
+                continue
+            # Status +0x8: the 0x100 bit means asleep (closing or hidden).
+            try:
+                if pm.read_int(obj + 0x8) & 0x100:
+                    continue
+            except Exception:
+                continue
+            layers.append((obj, cls))
         layers.reverse()
         return layers
 
