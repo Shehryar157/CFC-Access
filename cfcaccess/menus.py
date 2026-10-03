@@ -648,6 +648,7 @@ def gallery_viewer(reader, obj):
 
 
 # ---- Online Play menu ----
+ONLINE_MENU_CLASS = 0x14052DF70
 #   +0x320 cursor, +0x324 count, +0x328 + 4*row item id
 ONLINE_ITEMS = {
     0: ("CASUAL_MATCH", "HELP_CASUAL_MATCH"),
@@ -670,6 +671,35 @@ def online_menu(reader, obj):
         rows.append(Row(msg.get(label, f"Option {item}") if label else f"Option {item}", None,
                         msg.get(help_key) if help_key else None))
     return View(msg.get("ONLINE_PLAY"), _int(reader, obj + 0x320), rows)
+
+
+# ---- Online > Casual / Ranked match setup ----
+#   +0x324 row (0 = game grid, 1 Game Version, 2 Cross-region Matchmaking,
+#   3 One-button Special Moves), +0x328 row count, +0x330 game in the grid
+#   (0-9, 5 per row), +0x334 version (0 Japanese, 1 English, 2 Either),
+#   +0x338 cross-region (0 Off, 1 On), +0x33C one-button (0 On, 1 Off).
+# Which games are ticked for matchmaking isn't read yet.
+def match_setup(reader, obj):
+    msg = reader.msg
+    if _int(reader, obj + 0x328) != 4:
+        return None
+    game = _int(reader, obj + 0x330)
+    version = _int(reader, obj + 0x334)
+    rows = [
+        Row(msg.get("GAME_TITLE"), msg.get(f"GAME_NAME_S{game:02d}", f"game {game + 1}"),
+            msg.get("HELP_GAME_TITLE_ON")),
+        Row(msg.get("GAME_VERSION"), msg.get(["GAME_VERSION_J", "GAME_VERSION_E", "GAME_VERSION_ANY"][version % 3]),
+            msg.get("HELP_GAME_VERSION_ON")),
+        Row(msg.get("LOBBY_AREA"), msg.get(f"LOBBY_AREA_{_int(reader, obj + 0x338):02d}"), msg.get("HELP_LOBBY_AREA")),
+        Row(msg.get("LOBBY_SPMOVE"), msg.get(f"LOBBY_SPMOVE_{_int(reader, obj + 0x33C):02d}"), msg.get("HELP_LOBBY_SPMOVE")),
+    ]
+    # Casual and Ranked share this screen: name it after the online menu's choice.
+    title = msg.get("CASUAL_MATCH")
+    online = reader.find_layer(ONLINE_MENU_CLASS)
+    if online:
+        item = _int(reader, online + 0x328 + 4 * _int(reader, online + 0x320))
+        title = msg.get(ONLINE_ITEMS.get(item, ("CASUAL_MATCH",))[0], title)
+    return View(title, _int(reader, obj + 0x324), rows)
 
 
 # ---- Yes/No dialogs ("Exit the game?") ----
@@ -728,6 +758,7 @@ SCREENS = {
     0x14052DD48: music_select,
     0x140530C48: music_tracks,
     0x14052DF70: online_menu,
+    0x14052D4B0: match_setup,
     0x14052A2D0: None,  # drawing helper of the picture viewer
 }
 
