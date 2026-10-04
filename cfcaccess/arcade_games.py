@@ -6,7 +6,8 @@ memory to that game's reader.
 
 FightingGame holds everything the fighting games share: announcing the
 character under the select cursor and the match-up when a round starts,
-the stat hotkeys (H, G, T, M, R) and the event sounds. Each game is a small
+the stat hotkeys (H, G, T, M, R), the event sounds and round results
+(worked out from health, so they need no per-game address). Each game is a small
 subclass that says WHERE its values are (class attributes) and can add
 extra select-screen announcements.
 
@@ -39,10 +40,10 @@ class FightingGame:
     METER_STOCKS_MAX = 0
     TIMER = None          # byte, two decimal digits (or plain, see TIMER_BCD)
     TIMER_BCD = True
-    ROUNDS = (None, None) # byte: rounds won this match
     LOW = 0.25            # "low health" below a quarter
     JAPANESE_NAMES = False  # Japan-only games show the Japanese names
     SPEAK_CHAR_AT_SELECT = True  # say CHAR's name when it changes at select
+    DEMO_IDLE = 30        # no game key for this many seconds: a demo is playing
 
     def __init__(self, reader):
         self.r = reader
@@ -50,6 +51,7 @@ class FightingGame:
         self.last = {}
         self.last_pair = None
         self.round_started = False
+        self.own_wins = [0, 0]
 
     # ---- reading ----
     # rb / rw read one byte / one 2-byte word at an arcade address. CPS2
@@ -108,9 +110,6 @@ class FightingGame:
         v = self.rb(self.TIMER)
         return bcd(v) if self.TIMER_BCD else v
 
-    def wins(self, p):
-        return self.rb(self.ROUNDS[p]) if self.ROUNDS[p] is not None else None
-
     # ---- helpers ----
     def changed(self, key, value):
         old = self.last.get(key)
@@ -138,6 +137,11 @@ class FightingGame:
     def select_extras(self):
         """Games override this to announce extra select-screen choices."""
 
+    def playing(self):
+        """False during attract-mode demos: nobody has touched the controls
+        for a while, so the fight on screen is the machine playing itself."""
+        return self.r.idle_for() < self.DEMO_IDLE
+
     def poll(self):
         c1, c2 = self.char(0), self.char(1)
         if not self.round_started:
@@ -149,23 +153,53 @@ class FightingGame:
         # A round starts when both health values jump to full (they are 0
         # or stale during the versus screen; the opponent is set by then).
         h1, h2 = self.health(0), self.health(1)
+        t = self.timer()
         full = h1 == self.full(0) and h2 == self.full(1) and h1 > 0
+        if full and self.last.get("full") is False:
+            self.round_start(c1, c2)
+        self.last["full"] = full
         if full:
             self.round_started = True
-        elif h1 <= 0 or h2 <= 0:
-            self.round_started = False  # someone is down: the round is over
-        if full and self.last.get("full") is False:
-            pair = (c1, c2)
-            if pair != self.last_pair:
-                speech.say(f"{self.name(c1)} versus {self.name(c2)}")
-                self.last_pair = pair
-            else:
-                speech.say("Next round")
-        self.last["full"] = full
+        elif self.round_started:
+            if t:
+                self.last["clock_ran"] = True   # a 0 before this is just the intro
+            if h1 <= 0 or h2 <= 0 or (t == 0 and self.last.get("clock_ran")):
+                self.round_end(h1, h2)
         self.fight_events(h1, h2)
 
+    def round_start(self, c1, c2):
+        self.last["clock_ran"] = False
+        # Best of three: after someone's second win the next round is a new
+        # match (also catches a rematch against the same opponent).
+        pair = (c1, c2)
+        if pair != self.last_pair or max(self.own_wins) >= 2:
+            self.own_wins = [0, 0]
+            self.last_pair = pair
+            if self.playing():
+                speech.say(f"{self.name(c1)} versus {self.name(c2)}")
+        elif self.playing():
+            speech.say("Next round")
+
+    def round_end(self, h1, h2):
+        """Someone is down or the clock ran out: who has more health won."""
+        self.round_started = False
+        f1, f2 = h1 / self.full(0), h2 / self.full(1)
+        if f1 > f2:
+            self.own_wins[0] += 1
+            event = "round_won"
+        elif f2 > f1:
+            self.own_wins[1] += 1
+            event = "round_lost"
+        else:
+            event = None   # double knockout or a draw on time
+        if self.playing():
+            if event:
+                sounds.play(event)
+            else:
+                speech.say("Draw", interrupt=False)
+
     def fight_events(self, h1, h2):
-        in_round = self.in_match()
+        in_round = self.in_match() and self.playing()
         if self.crossed("p1_low", in_round and h1 < self.LOW * self.full(0)):
             sounds.play("low_health")
         if self.crossed("p2_low", in_round and h2 < self.LOW * self.full(1)):
@@ -178,15 +212,6 @@ class FightingGame:
         t = self.timer()
         if self.crossed("time_low", in_round and t is not None and t <= 10):
             sounds.play("time_low")
-        if self.ROUNDS[0] is not None:
-            w = (self.wins(0), self.wins(1))
-            prev = self.last.get("wins")
-            self.last["wins"] = w
-            if prev is not None:
-                if w[0] == prev[0] + 1:
-                    sounds.play("round_won")
-                elif w[1] == prev[1] + 1:
-                    sounds.play("round_lost")
 
     # ---- hotkey readouts ----
     def your_health(self):
@@ -209,9 +234,9 @@ class FightingGame:
         return "Round time not available yet" if t is None else f"Time {t}"
 
     def rounds(self):
-        if self.ROUNDS[0] is None:
-            return "Rounds not available yet"
-        return f"Rounds won: you {self.wins(0)}, opponent {self.wins(1)}"
+        # Counted by the mod from each round's result (see round_end), so it
+        # works the same in every game.
+        return f"Rounds won: you {self.own_wins[0]}, opponent {self.own_wins[1]}"
 
 
 class HSF2(FightingGame):
@@ -227,7 +252,6 @@ class HSF2(FightingGame):
     METER = (0xFF85F0, 0xFF89F0)
     METER_FULL = 48
     TIMER = 0xFF8BFC
-    ROUNDS = (0xFF8685, 0xFF8A85)
     SPEED = 0xFF8B63      # 0, 1, 2 = game speed 1, 2, 3
     PLTYPE = 0xFF83CC     # P1: 0 Super X ... 4 Normal
     PLTYPES = ["Super X", "Super", "Turbo", "Dash", "Normal"]
@@ -258,7 +282,6 @@ class Cyberbots(FightingGame):
     METER = (0xFF8534, 0xFF8934)
     METER_FULL = 63
     TIMER = 0xFFEBA0
-    ROUNDS = (0xFF84AD, 0xFF88AD)
     PILOT = 0xFF8529      # P1 pilot cursor, arcade order
     PILOTS = [0, 2, 1, 5, 3, 4]  # arcade pilot -> STATS_CYBOTS_nn (Jin, Mary, ...)
     BODY = 0xFFD5E0       # body type cursor: Blodia, Reptos, Fordy, Guldin
@@ -277,7 +300,7 @@ class Cyberbots(FightingGame):
 class Darkstalkers(FightingGame):
     """Darkstalkers: The Night Warriors / Vampire. Health and meter from
     fbneo-training-mode dstlk.lua; select, characters, timer from our tests
-    (2026-10-04); rounds provisional."""
+    (2026-10-04)."""
 
     STATS = "VAMP"
     # Arcade character numbers (1 Demitri, 2 Jon Talbain, 3 Victor,
@@ -292,7 +315,6 @@ class Darkstalkers(FightingGame):
     METER = (0xFF855F, 0xFF895F)
     METER_FULL = 0x50
     TIMER = 0xFF9409
-    ROUNDS = (0xFF8336, 0xFF8736)   # provisional: seen 0 -> 1 once
     CURSOR = 0xFF8729     # P1 grid cursor, same numbering as CHAR
     SPEED = 0xFFF424      # 0, 1, 2 = speed 1, 2, 3
 
@@ -339,7 +361,7 @@ class NightWarriors(FightingGame):
 class VampireSavior(FightingGame):
     """Vampire Savior: The Lord of Vampire. Health, stocked meter from
     fbneo-training-mode vsav.lua; select cursor, characters, timer from our
-    tests (2026-10-04). Rounds not found yet (one candidate reset to 0)."""
+    tests (2026-10-04)."""
 
     STATS = "VSAV"
     # Arcade numbers -> STATS_VSAV_nn. Seen on screen: 0 Bulleta, 1 Demitri,
@@ -773,7 +795,9 @@ class PuzzleFighter:
 
 # First 8 bytes of each game's program (arcade address 0) -> reader class.
 GAMES = {
-    bytes.fromhex("092c59d660d42b51"): HSF2,
+    bytes.fromhex("092c59d660d42b51"): HSF2,            # Japanese version
+    bytes.fromhex("2588350f5ac88ae1"): HSF2,            # English version
+    bytes.fromhex("0219bed9a669a4c9"): Darkstalkers,    # Japanese (Vampire), untested
     bytes.fromhex("5cb1db2d2156abe4"): Cyberbots,
     bytes.fromhex("bfdc85c2edbf58d2"): Darkstalkers,
     bytes.fromhex("8697200eb97ecc5f"): NightWarriors,
@@ -797,6 +821,7 @@ class ArcadeReader:
         self.arcade = arcade.Arcade(game)
         self.fingerprint = None
         self.game_reader = None
+        self.hotkeys = None
 
     @property
     def key(self):
@@ -811,7 +836,11 @@ class ArcadeReader:
         except Exception:
             speech.say("Not available")
 
+    def idle_for(self):
+        return self.hotkeys.idle_for() if self.hotkeys else 0.0
+
     def bind_keys(self, hotkeys):
+        self.hotkeys = hotkeys
         for key, method in self.KEYS.items():
             hotkeys.bind(key, lambda m=method: self.speak_stat(m))
         # Number keys 1-6: read a board column (Super Puzzle Fighter).

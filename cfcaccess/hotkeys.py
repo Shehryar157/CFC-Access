@@ -6,8 +6,27 @@ and only while the game window is in front, so typing elsewhere is ignored.
 The keys still reach the game too; we only use keys the game doesn't bind.
 """
 import ctypes
+import time
 
 user32 = ctypes.windll.user32
+
+# Keys the player uses to play (arrows, WASD, the Type A attack keys,
+# Enter, F1 Start). Pressing any of them counts as "the player is here".
+GAME_KEYS = [0x25, 0x26, 0x27, 0x28, ord("W"), ord("A"), ord("S"), ord("D"),
+             ord("U"), ord("I"), ord("O"), ord("J"), ord("K"), ord("L"), 0x0D, 0x70]
+
+
+class _XINPUT_STATE(ctypes.Structure):
+    _fields_ = [("packet", ctypes.c_uint32), ("buttons", ctypes.c_uint16),
+                ("lt", ctypes.c_uint8), ("rt", ctypes.c_uint8),
+                ("lx", ctypes.c_int16), ("ly", ctypes.c_int16),
+                ("rx", ctypes.c_int16), ("ry", ctypes.c_int16)]
+
+
+try:
+    _xinput = ctypes.windll.xinput1_4
+except OSError:
+    _xinput = None
 
 
 class Hotkeys:
@@ -15,6 +34,24 @@ class Hotkeys:
         self.hwnd_getter = hwnd_getter   # returns the game window (or None)
         self.handlers = {}               # virtual-key code -> function
         self.down = set()
+        self.last_input = 0.0            # when the player last pressed a game key
+        self._pad_packets = {}
+
+    def idle_for(self):
+        """Seconds since the player last touched the game's controls."""
+        return time.monotonic() - self.last_input
+
+    def _check_activity(self):
+        if any(user32.GetAsyncKeyState(vk) & 0x8000 for vk in GAME_KEYS):
+            self.last_input = time.monotonic()
+        if _xinput is not None:
+            # A controller's packet number changes whenever its state does.
+            state = _XINPUT_STATE()
+            for pad in range(4):
+                if _xinput.XInputGetState(pad, ctypes.byref(state)) == 0:
+                    if self._pad_packets.get(pad, state.packet) != state.packet:
+                        self.last_input = time.monotonic()
+                    self._pad_packets[pad] = state.packet
 
     def bind(self, key, handler):
         """key: a letter like "G" or a virtual-key code."""
@@ -26,6 +63,7 @@ class Hotkeys:
         if not hwnd or user32.GetForegroundWindow() != hwnd:
             self.down.clear()
             return
+        self._check_activity()
         for vk, handler in self.handlers.items():
             pressed = bool(user32.GetAsyncKeyState(vk) & 0x8000)
             if pressed and vk not in self.down:

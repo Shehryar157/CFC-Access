@@ -88,11 +88,13 @@ def to_select_game(n):
             continue
         n.press("backspace", hold=0.15)
         win.wait_for(lambda: n.title() != t, 3)
+    win.wait_for(lambda: n.title() == "Select Game", 12)
     n.expect("Select Game", 2)
 
 
-def go(n, game):
+def go(n, game, version="English"):
     to_select_game(n)
+    win.wait_for(lambda: n.view() and n.view().rows[1].value, 5)
     names = tuple(game.split("|"))   # "Darkstalkers|Vampire: The Night"
     n.goto(0)
     hold = 0.15
@@ -107,13 +109,13 @@ def go(n, game):
         raise SystemExit("game not found: " + n.describe())
     # English version where there is one (the story text is then English).
     n.goto(1)
-    for _ in range(3):
-        if n.view().rows[1].value.startswith("English"):
+    for _ in range(4):
+        if n.view().rows[1].value.startswith(version):
             break
         b = n.view().rows[1].value
         n.press("right", hold=0.15)
         win.wait_for(lambda: n.view().rows[1].value != b, 1)
-    print(n.describe())
+    print("LAUNCH", n.view().rows[0].value, "|", n.view().rows[1].value, flush=True)
     for _ in range(3):
         n.press("enter", hold=0.15)
         if win.wait_for(lambda: n.title() == "Select Mode", 3):
@@ -137,7 +139,7 @@ def go(n, game):
 def fp(n):
     a = arcade.Arcade(n.game)
     a.locate()
-    print("fingerprint", n.game.pm.read_bytes(a.base, 8).hex())
+    print("fingerprint", n.game.pm.read_bytes(a.base, 8).hex(), flush=True)
 
 
 def save(n):
@@ -212,7 +214,42 @@ if __name__ == "__main__":
     n = nav()
     if cmd == "go":
         go(n, sys.argv[2])
-    elif cmd == "fp":
+    elif cmd == "versions":
+        # Launch every version of every game; print each one's fingerprint.
+        to_select_game(n)
+        n.goto(0)
+        games = []
+        for _ in range(12):
+            g = n.view().rows[0].value
+            if g in games:
+                break
+            games.append(g)
+            vs = []
+            n.goto(1)
+            for _ in range(4):
+                v = n.view().rows[1].value
+                if v in vs:
+                    break
+                vs.append(v)
+                n.press("right", hold=0.15)
+                win.wait_for(lambda: n.view().rows[1].value != v, 1)
+            print(g, vs, flush=True)
+            games[-1] = (g, vs)
+            n.goto(0)
+            n.press("right", hold=0.2)
+            win.wait_for(lambda: n.view().rows[0].value != g, 1)
+        skip = sys.argv[2:]   # game names already done
+        for g, vs in games:
+            if any(g.startswith(x) for x in skip):
+                continue
+            for v in vs:
+                for attempt in range(2):
+                    try:
+                        go(n, g, v)
+                        break
+                    except (SystemExit, Exception) as e:
+                        print("FAILED", g, v, repr(e), flush=True)
+        win.release_keyboard()
         fp(n)
     elif cmd == "save":
         save(n)
