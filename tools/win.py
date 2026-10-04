@@ -189,7 +189,11 @@ def screenshot(hwnd, path):
     gdi32.DeleteObject(bmp)
     gdi32.DeleteDC(hdc)
     user32.ReleaseDC(hwnd, hdc_window)
-    Image.frombuffer("RGBA", (w, h), buf, "raw", "BGRA", 0, 1).convert("RGB").save(path)
+    im = Image.frombuffer("RGBA", (w, h), buf, "raw", "BGRA", 0, 1).convert("RGB")
+    # Scripts use 1280x720 coordinates: scale whatever the game resolution is.
+    if im.size != (1280, 720):
+        im = im.resize((1280, 720))
+    im.save(path)
     return path
 
 

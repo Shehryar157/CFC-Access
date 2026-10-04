@@ -55,6 +55,7 @@ def resume(n):
 
 def to_select_game(n):
     for _ in range(8):
+        win.wait_for(lambda: n.title() != "", 10)  # "" = the "Saving..." notice
         t = n.title()
         if t == "Select Game":
             return
