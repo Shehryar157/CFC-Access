@@ -155,8 +155,11 @@ Requires Python 3.11 (64-bit) on Windows.
 
 ```
 pip install -r requirements.txt pyinstaller
+python tools/build_loader.py build
 python tools/build_release.py
 ```
+
+`build_loader.py` compiles the auto-start DLL with [Zig](https://ziglang.org/) (`zig cc`). Set the path to `zig.exe` at the top of that file first.
 
 This produces `dist/CFCAccess-Setup-<version>.exe`. To run the mod from source instead, start the game and run `python run.py`.
 
