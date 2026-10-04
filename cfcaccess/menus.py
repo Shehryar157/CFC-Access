@@ -43,6 +43,7 @@ IGNORED_CLASSES = {
     0x14052C718, 0x14052C4E8, 0x140527968,
     # Shown for a moment while a game shuts down after Quit (2026-10-04).
     0x140529C38, 0x1405A62E0, 0x1405A5750,
+    0x14052C0C8,  # flickers on and off during matchmaking
 }
 MAX_LAYERS = 24
 EXE_START, EXE_END = 0x140100000, 0x140700000  # where the screen classes (vtables) live
@@ -891,6 +892,35 @@ def lobby(reader, obj):
     return View(msg.get("LOBBY"), 0, rows)
 
 
+# ---- Notice pop-ups ("Looking for an opponent...", "Retrieving ranking
+# data...") ----   +0x328 the message number.
+def notice(reader, obj):
+    if reader.find_layer(STANDBY_CLASS):
+        # Over the standby choice: let the menu underneath be read (it
+        # carries the same "Looking for an opponent" title).
+        return HIDDEN
+    text = reader.msg.by_index(_int(reader, obj + 0x328), "")
+    return View("", 0, [Row(text or "Please wait")])
+
+
+# ---- Online > Casual/Ranked Match: where to wait while searching ----
+#   Behind the "Looking for an opponent" notice: Basic Standby (stay here),
+#   In-game Standby (play offline meanwhile), Museum Standby.
+#   +0x324 cursor, +0x328 item count.
+STANDBY_CLASS = 0x14052D6E8
+STANDBY_ITEMS = ["HERE_WAIT_MATCH", "GAME_WAIT_MATCH", "MUSEUM_WAIT_MATCH"]
+
+
+def standby_menu(reader, obj):
+    msg = reader.msg
+    count = _int(reader, obj + 0x328)
+    cursor = _int(reader, obj + 0x324)
+    if not 1 <= count <= len(STANDBY_ITEMS) or not 0 <= cursor < count:
+        return None
+    rows = [Row(msg.get(k), None, msg.get("HELP_" + k, "")) for k in STANDBY_ITEMS[:count]]
+    return View(msg.get("POP_SEARCH_MATCH"), cursor, rows)
+
+
 # ---- Online > Ranked Leaderboard > Select Game ----
 #   +0x320 game (Select Game order), +0x324 count
 def leaderboard_game(reader, obj):
@@ -1088,10 +1118,11 @@ SCREENS = {
     0x14052BEB8: lobby_settings("JOIN_LOBBY", 6, searching=True),
     0x14052B580: lobby_id,
     LOBBY_CLASS: lobby,
+    STANDBY_CLASS: standby_menu,
     0x14052FF70: leaderboard_game,
     0x140530180: leaderboard,
     0x1405290E8: move_list,
-    0x14052FB10: lambda reader, obj: View("", 0, [Row(reader.msg.get("POP_GET_RANKING"))]),
+    0x14052FB10: notice,
     0x1405305F0: lambda reader, obj: View("", 0, [Row(reader.msg.get("SYS_AUTOSAVE"))]),  # "Saving..." notice
     0x140529A28: fixed_list("CUSTOM_MATCH", [
         ("CREATE_LOBBY", "HELP_CREATE_LOBBY"),
