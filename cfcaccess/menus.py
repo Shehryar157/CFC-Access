@@ -41,6 +41,8 @@ IGNORED_CLASSES = {
     0x1405314F0, 0x14052AE58, 0x14052F8E8,
     # Training mode displays (damage/combo counters, hitboxes, input log).
     0x14052C718, 0x14052C4E8, 0x140527968,
+    # Shown for a moment while a game shuts down after Quit (2026-10-04).
+    0x140529C38, 0x1405A62E0,
 }
 MAX_LAYERS = 24
 EXE_START, EXE_END = 0x140100000, 0x140700000  # where the screen classes (vtables) live

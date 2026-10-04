@@ -538,6 +538,7 @@ class PuzzleFighter:
     # Grid number (Ryu, Chun-Li, Sakura, Ken / Morrigan, Hsien-Ko, Donovan,
     # Felicia) -> STATS_SPF2X_nn. Hidden characters not seen yet.
     ROSTER = [0, 2, 4, 1, 5, 6, 3, 7, 8]  # 8 Devilot (hidden, seen)
+    JAPANESE_NAMES = False
     COLOURS = {1: "blue", 2: "yellow", 3: "green", 4: "red"}
     PLACES = ["on top", "to the right", "below", "to the left"]
     DANGER_HEIGHT = 10            # columns 3 and 4 this high: nearly lost
@@ -624,13 +625,18 @@ class PuzzleFighter:
         index = self.ROSTER[grid] if 0 <= grid < len(self.ROSTER) else None
         if index is None:
             return f"character {grid}"
+        return self.roster_name(index) or f"character {grid}"
+
+    def roster_name(self, index):
         text = self.r.msg.get(f"STATS_SPF2X_{index:02d}_NAME", "")
-        return text.split(" (EN)/")[0] or f"character {grid}"
+        if " (EN)/" in text:
+            english, rest = text.split(" (EN)/", 1)
+            text = rest.replace(" (JP)", "") if self.JAPANESE_NAMES else english
+        return text
 
     def char_name(self, char):
         index = self.CHAR_ROSTER[char] if 0 <= char < len(self.CHAR_ROSTER) else None
-        text = self.r.msg.get(f"STATS_SPF2X_{index:02d}_NAME", "") if index is not None else ""
-        return text.split(" (EN)/")[0] or f"character {char}"
+        return (self.roster_name(index) if index is not None else "") or f"character {char}"
 
     def in_match(self):
         pivot, other = self.pair(0)
@@ -793,22 +799,36 @@ class PuzzleFighter:
         return f"Next {other} over {pivot}"
 
 
+def japanese(cls):
+    """The same reader for a game's Japanese version, which shows the
+    Japanese character names on screen."""
+    return type(cls.__name__ + "JP", (cls,), {"JAPANESE_NAMES": True})
+
+
 # First 8 bytes of each game's program (arcade address 0) -> reader class.
+# Every game has an English (USA) and a Japanese version with different
+# programs; their memory layout is the same. All fingerprints recorded
+# 2026-10-04 by launching each version.
 GAMES = {
-    bytes.fromhex("092c59d660d42b51"): HSF2,            # Japanese version
-    bytes.fromhex("2588350f5ac88ae1"): HSF2,            # English version
-    bytes.fromhex("0219bed9a669a4c9"): Darkstalkers,    # Japanese (Vampire), untested
-    bytes.fromhex("5cb1db2d2156abe4"): Cyberbots,
-    bytes.fromhex("bfdc85c2edbf58d2"): Darkstalkers,
-    bytes.fromhex("8697200eb97ecc5f"): NightWarriors,
-    bytes.fromhex("faa9173a43f4aec0"): VampireSavior,
-    bytes.fromhex("48d3bfd1c6d78d91"): VampireHunter2,
-    bytes.fromhex("11ebea2b261726a4"): VampireSavior2,
-    bytes.fromhex("7dfe9ab442e79466"): GemFighter,
-    # CPS3 games start with the board's own boot program, so this is the
-    # same for both Red Earth versions.
+    bytes.fromhex("2588350f5ac88ae1"): HSF2,
+    bytes.fromhex("092c59d660d42b51"): japanese(HSF2),
+    # CPS3 games start with the board's own boot program, so both Red
+    # Earth versions look the same (Warzard is the Japanese one).
     bytes.fromhex("0004000000000802"): RedEarth,
+    bytes.fromhex("bfdc85c2edbf58d2"): Darkstalkers,
+    bytes.fromhex("0219bed9a669a4c9"): japanese(Darkstalkers),    # Vampire
+    bytes.fromhex("8697200eb97ecc5f"): NightWarriors,
+    bytes.fromhex("95998c972594a158"): japanese(NightWarriors),   # Vampire Hunter
+    bytes.fromhex("faa9173a43f4aec0"): VampireSavior,
+    bytes.fromhex("fcfd05f2e82c677a"): japanese(VampireSavior),
+    bytes.fromhex("48d3bfd1c6d78d91"): VampireHunter2,            # Japan only
+    bytes.fromhex("11ebea2b261726a4"): VampireSavior2,            # Japan only
+    bytes.fromhex("934cf66b1e0fb085"): Cyberbots,
+    bytes.fromhex("5cb1db2d2156abe4"): japanese(Cyberbots),
     bytes.fromhex("79b036f011cc1fdf"): PuzzleFighter,
+    bytes.fromhex("df6c7d0f9ec25145"): japanese(PuzzleFighter),   # Super Puzzle Fighter II X
+    bytes.fromhex("7dfe9ab442e79466"): GemFighter,
+    bytes.fromhex("8e434ea98e3cd06e"): japanese(GemFighter),      # Pocket Fighter
 }
 
 

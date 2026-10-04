@@ -86,6 +86,12 @@ def to_select_game(n):
             n.press("enter", hold=0.15)
             win.wait_for(lambda: n.title() != t, 12)
             continue
+        if t.startswith("Unknown screen") and not win.wait_for(lambda: n.title() != t, 5):
+            # Don't guess at a screen we can't read: stop and say what it was.
+            win.screenshot(n.hwnd, "scratch/unknown_screen.png")
+            raise SystemExit(f"stopped on {t} (screenshot scratch/unknown_screen.png)")
+        if t.startswith("Unknown screen"):
+            continue   # it went away by itself
         n.press("backspace", hold=0.15)
         win.wait_for(lambda: n.title() != t, 3)
     win.wait_for(lambda: n.title() == "Select Game", 12)
