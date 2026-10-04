@@ -14,6 +14,7 @@ Addresses come from fbneo-training-mode (github.com/peon2) and from our own
 tests (see each game's comments).
 """
 import ctypes
+import time
 
 from . import arcade, sounds, speech
 
@@ -491,15 +492,18 @@ class PuzzleFighter:
       low byte 1-4        a gem: 1 blue, 2 yellow, 3 green, 4 red
       low byte 9-12       a crash gem (8 + colour)
       low byte 7          a counter gem; high byte = colour * 16 + count
-    Other codes (diamond, power gems) are logged so we can name them.
+      + 0x10 / 0x20 / 0x40  marks on gems that are being cleared (ignored)
+      low byte 5 (6 while going off)  a diamond
+      colour with a non-zero high byte  part of a power gem
+    Other codes are logged so we can name them.
     """
 
     BOARD = (0xFFAB10, 0xFFAF10)
     PAIR = (0xFF8452, 0xFF8852)   # falling pair: pivot (bottom) gem, other gem
     NEXT = (0xFF8456, 0xFF8856)
     COLUMN = 0xFF8310             # pivot gem's column, 0-5
+    ROW = 0xFF8314                # pivot gem's row, counting down from the top
     ROTATION = 0xFF8470           # byte: where the other gem is (0 up, 1 right, 2 down, 3 left)
-    CHAR = (0xFF8448, 0xFF8848)   # select-grid number
     LEVEL = 0xFF0C8C              # level select cursor: 0 Easy, 1 Normal, 2 Hard
     CURSOR = 0xFF0C83             # character select cursor (grid number)
     # Grid number (Ryu, Chun-Li, Sakura, Ken / Morrigan, Hsien-Ko, Donovan,
@@ -508,6 +512,12 @@ class PuzzleFighter:
     COLOURS = {1: "blue", 2: "yellow", 3: "green", 4: "red"}
     PLACES = ["on top", "to the right", "below", "to the left"]
     DANGER_HEIGHT = 10            # columns 3 and 4 this high: nearly lost
+    # Counter gems about to drop on each player (the CAUTION box's number).
+    # P1's was seen on screen; P2's is the same spot in P2's block.
+    INCOMING = (0xFF857B, 0xFF897B)
+    # The attack each player is sending; P2's (0xFF889E) matched P1's
+    # incoming on screen, P1's is the same spot in P1's block.
+    SENDING = (0xFF849E, 0xFF889E)
 
     def __init__(self, reader):
         self.r = reader
@@ -520,6 +530,7 @@ class PuzzleFighter:
         lo, hi = w & 0xFF, w >> 8
         if lo == 0:
             return None
+        lo &= 0x0F   # 0x10-0x40 are marks while gems are being cleared
         if lo in self.COLOURS and hi == 0:
             return self.COLOURS[lo]
         if lo - 8 in self.COLOURS:
@@ -528,24 +539,53 @@ class PuzzleFighter:
             return f"{self.COLOURS[hi >> 4]} counter {hi & 15}"
         if lo in self.COLOURS:
             return "power " + self.COLOURS[lo]
+        if lo in (5, 6):   # 5 a diamond, 6 a diamond going off
+            return "diamond"
         if w not in self.unknown:
             self.unknown.add(w)
             print(f"PUZZLE: unknown gem code {w:#06x}")
-        return "diamond" if lo == 5 else f"gem {w:#x}"
+        return "diamond" if lo in (5, 6) else f"gem {w:#x}"
 
-    def column_gems(self, p, c):
+    def grid(self, p):
+        """The board's cell words, top row first (one memory read)."""
+        words = self.a.read_words(self.BOARD[p], 13 * 8)
+        return [words[8 * r + 1:8 * r + 7] for r in range(13)]
+
+    def column_gems(self, p, c, grid=None):
         """Gems in column c (0-5), bottom first."""
-        base = self.BOARD[p]
+        grid = grid or self.grid(p)
         out = []
         for r in range(12, -1, -1):
-            g = self.gem(self.a.read_word(base + 0x10 * r + 2 + 2 * c))
+            g = self.gem(grid[r][c])
             if g is None:
                 break
             out.append(g)
         return out
 
-    def heights(self, p):
-        return [len(self.column_gems(p, c)) for c in range(6)]
+    def heights(self, p, grid=None):
+        grid = grid or self.grid(p)
+        return [len(self.column_gems(p, c, grid)) for c in range(6)]
+
+    def top(self, grid, c):
+        """What a gem dropped into column c lands on."""
+        if not 0 <= c < 6:
+            return "the wall"
+        gems = self.column_gems(0, c, grid)
+        return gems[-1] if gems else "the floor"
+
+    def colour_counts(self, grid):
+        """How many gems of each colour (crash and counter gems included)."""
+        counts = {}
+        for row in grid:
+            for w in row:
+                g = self.gem(w)
+                if g:
+                    colour = g.replace("power ", "").split()[0]
+                    counts[colour] = counts.get(colour, 0) + 1
+        return counts
+
+    def power_cells(self, grid):
+        return sum(1 for row in grid for w in row if (self.gem(w) or "").startswith("power"))
 
     def pair(self, p, address=None):
         a = address if address is not None else self.PAIR[p]
@@ -580,7 +620,8 @@ class PuzzleFighter:
     def poll(self):
         a = self.a
         if not self.in_match():
-            self.last.pop("pair", None)
+            for key in ("pairs", "seen", "counts", "cleared", "power", "incoming", "sending"):
+                self.last.pop(key, None)
             level = a.read_byte(self.LEVEL)
             if self.changed("level", level) and level <= 2:
                 speech.say(["Easy", "Normal", "Hard"][level])
@@ -590,28 +631,96 @@ class PuzzleFighter:
             self.last["matched"] = False
             return
         if self.last.get("matched") is False:
-            speech.say(f"{self.name(a.read_byte(self.CHAR[0]))} versus {self.name(a.read_byte(self.CHAR[1]))}")
+            # The opponent's character isn't found yet; say ours.
+            speech.say(f"{self.name(a.read_byte(self.CURSOR))}, match start")
         self.last["matched"] = True
         pivot, other = self.pair(0)
         column = a.read_word(self.COLUMN)
         rotation = a.read_byte(self.ROTATION) & 3
         pair = (pivot, other)
-        new_pair = self.last.get("pair") != pair
-        self.last["pair"] = pair
+        # A new pair starts at the top: its row jumps back up, a moment
+        # before the colours change. Stay quiet from the jump until the
+        # pairs change (the next pair always changes, even if the colours
+        # of the falling one repeat).
+        row = a.read_word(self.ROW)
+        if row < self.last.get("row", row):
+            self.last["spawning"] = True
+        self.last["row"] = row
+        # The two pairs don't update in the same frame, so a change only
+        # counts once both have held still for a tenth of a second.
+        pairs = (pair, self.pair(0, self.NEXT[0]))
+        now = time.monotonic()
+        if pairs != self.last.get("seen"):
+            self.last["seen"], self.last["seen_at"] = pairs, now
+        steady = now - self.last["seen_at"] >= 0.1
+        new_pair = steady and self.last.get("pairs") != pairs
+        if new_pair:
+            self.last["pairs"] = pairs
+            self.last["spawning"] = False
+        elif pairs != self.last.get("pairs"):
+            self.last["spawning"] = True   # changing: stay quiet meanwhile
+        elif self.last.get("spawning"):
+            self.last["column"], self.last["rotation"] = column, rotation  # stay quiet
         moved = self.changed("column", column)
         turned = self.changed("rotation", rotation)
+        grid = self.grid(0)
+        landing = self.landing(grid, column, rotation)
         if new_pair:
             self.last["column"], self.last["rotation"] = column, rotation
-            speech.say(self.describe(pivot, other, rotation))
+            speech.say(f"{self.describe(pivot, other, rotation)}, {landing}")
         elif turned:
-            speech.say(f"{other} {self.PLACES[rotation]}")
+            speech.say(f"{other} {self.PLACES[rotation]}, {landing}")
         elif moved:
-            speech.say(self.where(column, rotation))
-        tall = max(self.heights(0)[2:4])
+            speech.say(f"{self.where(column, rotation)}, {landing}")
+        self.track_board(grid)
+        self.track_attacks()
+        tall = max(self.heights(0, grid)[2:4])
         danger = tall >= self.DANGER_HEIGHT
         if danger and self.last.get("danger") is False:
             sounds.play("danger")
         self.last["danger"] = danger
+
+    def landing(self, grid, column, rotation):
+        """Where the pair would land: "on green", or "on green and the floor"."""
+        if rotation in (1, 3):
+            other_col = column + 1 if rotation == 1 else column - 1
+            cols = sorted((column, other_col))
+            return f"on {self.top(grid, cols[0])} and {self.top(grid, cols[1])}"
+        return f"on {self.top(grid, column)}"
+
+    def track_board(self, grid):
+        """Say what was cleared (gathered over a chain) and new power gems."""
+        now = time.monotonic()
+        counts = self.colour_counts(grid)
+        before = self.last.get("counts")
+        self.last["counts"] = counts
+        if before is not None:
+            for colour, n in before.items():
+                gone = n - counts.get(colour, 0)
+                if gone > 0:
+                    cleared = self.last.setdefault("cleared", {})
+                    cleared[colour] = cleared.get(colour, 0) + gone
+                    self.last["cleared_at"] = now
+        cleared = self.last.get("cleared")
+        if cleared and now - self.last["cleared_at"] > 0.8:   # chain over
+            total = sum(cleared.values())
+            parts = ", ".join(f"{n} {c}" for c, n in sorted(cleared.items(), key=lambda x: -x[1]))
+            speech.say(f"Cleared {total}: {parts}", interrupt=False)
+            self.last["cleared"] = {}
+        power = self.power_cells(grid)
+        if power > self.last.get("power", power):
+            speech.say("Power gem", interrupt=False)
+        self.last["power"] = power
+
+    def track_attacks(self):
+        incoming = self.a.read_byte(self.INCOMING[0])
+        if incoming > self.last.get("incoming", incoming):
+            speech.say(f"{incoming} counter gems coming", interrupt=False)
+        self.last["incoming"] = incoming
+        sending = self.a.read_byte(self.SENDING[0])
+        if sending > self.last.get("sending", sending):
+            speech.say(f"Sending {sending}", interrupt=False)
+        self.last["sending"] = sending
 
     @staticmethod
     def where(column, rotation):

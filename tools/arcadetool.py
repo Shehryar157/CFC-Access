@@ -95,12 +95,14 @@ def go(n, game):
     to_select_game(n)
     names = tuple(game.split("|"))   # "Darkstalkers|Vampire: The Night"
     n.goto(0)
-    for _ in range(12):
+    hold = 0.15
+    for _ in range(20):
         if n.view().rows[0].value.startswith(names):
             break
         b = n.view().rows[0].value
-        n.press("right", hold=0.15)
-        win.wait_for(lambda: n.view().rows[0].value != b, 1)
+        n.press("right", hold=hold)
+        if not win.wait_for(lambda: n.view().rows[0].value != b, 1):
+            hold = min(0.4, hold + 0.1)   # ignored: hold the key longer
     if not n.view().rows[0].value.startswith(names):
         raise SystemExit("game not found: " + n.describe())
     # English version where there is one (the story text is then English).
