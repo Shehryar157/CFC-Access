@@ -49,11 +49,23 @@ class FightingGame:
         self.round_started = False
 
     # ---- reading ----
+    # rb / rw read one byte / one 2-byte word at an arcade address. CPS2
+    # games use arcade.py's layout as-is; Red Earth (CPS3) overrides them.
+    def rb(self, address):
+        return self.a.read_byte(address)
+
+    def rw(self, address):
+        return self.a.read_word(address)
+
     def read(self, address, size):
-        return self.a.read_word(address) if size == 2 else self.a.read_byte(address)
+        return self.rw(address) if size == 2 else self.rb(address)
 
     def char(self, p):
-        return self.a.read_byte(self.CHAR[p]) if self.CHAR[p] is not None else None
+        return self.rb(self.CHAR[p]) if self.CHAR[p] is not None else None
+
+    def full(self, p):
+        """Health at the start of a round (the same for everyone in most games)."""
+        return self.FULL
 
     def health(self, p):
         v = self.read(self.HEALTH[p], self.HEALTH_SIZE)
@@ -80,7 +92,7 @@ class FightingGame:
     def meter_parts(self, p):
         """(full stocks, fraction of the current bar)."""
         bar = self.read(self.METER[p], self.METER_SIZE)
-        stocks = self.a.read_byte(self.METER_STOCKS[p]) if self.METER_STOCKS else 0
+        stocks = self.rb(self.METER_STOCKS[p]) if self.METER_STOCKS else 0
         return stocks, min(1.0, bar / self.METER_FULL)
 
     def super_ready(self, p):
@@ -90,11 +102,11 @@ class FightingGame:
     def timer(self):
         if self.TIMER is None:
             return None
-        v = self.a.read_byte(self.TIMER)
+        v = self.rb(self.TIMER)
         return bcd(v) if self.TIMER_BCD else v
 
     def wins(self, p):
-        return self.a.read_byte(self.ROUNDS[p]) if self.ROUNDS[p] is not None else None
+        return self.rb(self.ROUNDS[p]) if self.ROUNDS[p] is not None else None
 
     # ---- helpers ----
     def changed(self, key, value):
@@ -116,7 +128,7 @@ class FightingGame:
         """A round is being fought: both fighters standing, clock running."""
         h1, h2 = self.health(0), self.health(1)
         t = self.timer()
-        return (self.round_started and 0 < h1 <= self.FULL and 0 < h2 <= self.FULL
+        return (self.round_started and 0 < h1 <= self.full(0) and 0 < h2 <= self.full(1)
                 and (t is None or t > 0))
 
     # ---- polling ----
@@ -134,7 +146,7 @@ class FightingGame:
         # A round starts when both health values jump to full (they are 0
         # or stale during the versus screen; the opponent is set by then).
         h1, h2 = self.health(0), self.health(1)
-        full = h1 == h2 == self.FULL
+        full = h1 == self.full(0) and h2 == self.full(1) and h1 > 0
         if full:
             self.round_started = True
         elif h1 <= 0 or h2 <= 0:
@@ -151,10 +163,9 @@ class FightingGame:
 
     def fight_events(self, h1, h2):
         in_round = self.in_match()
-        low = self.LOW * self.FULL
-        if self.crossed("p1_low", in_round and h1 < low):
+        if self.crossed("p1_low", in_round and h1 < self.LOW * self.full(0)):
             sounds.play("low_health")
-        if self.crossed("p2_low", in_round and h2 < low):
+        if self.crossed("p2_low", in_round and h2 < self.LOW * self.full(1)):
             sounds.play("enemy_low_health")
         if self.METER[0] is not None:
             if self.crossed("p1_super", in_round and self.super_ready(0)):
@@ -176,10 +187,10 @@ class FightingGame:
 
     # ---- hotkey readouts ----
     def your_health(self):
-        return f"Health {self.percent(self.health(0), self.FULL)} percent"
+        return f"Health {self.percent(self.health(0), self.full(0))} percent"
 
     def enemy_health(self):
-        return f"{self.name(self.char(1))} {self.percent(self.health(1), self.FULL)} percent"
+        return f"{self.name(self.char(1))} {self.percent(self.health(1), self.full(1))} percent"
 
     def meter(self):
         if self.METER[0] is None:
@@ -394,6 +405,64 @@ class GemFighter(FightingGame):
     TIMER = 0xFF8188
 
 
+class RedEarth(FightingGame):
+    """Red Earth / Warzard (CPS3 board; tested 2026-10-04).
+
+    The CPS3's CPU works in 4-byte units; the emulator keeps its work RAM
+    (arcade addresses 0x2000000-0x207FFFF) at block offset 0x80020, each
+    4-byte unit in PC byte order. We give addresses the way the emulator
+    stores them (as fbneo-training-mode's redearth.lua does), so rb/rw just
+    add the shift. Found by pointers in the player blocks that point at
+    each other (P1 0x206A784 <-> P2 0x206AA04).
+    """
+
+    SHIFT = 0x80020 - 0x2000000
+    STATS = "WARZARD"
+    # Heroes: 0 Leo, 1 Kenji, 2 Tessa, 3 Mai Ling (STATS_WARZARD has each
+    # three times, one per stats page).
+    ROSTER = [0, 4, 10, 7]
+    # Player 2 is always a boss, numbered separately; names as on screen.
+    BOSSES = {3: "Hydron"}
+    CHAR = (0x206A886, 0x206AB06)
+    HEALTH = (0x206A820, 0x206AAA0)
+    FULL_AT = (0x206A8D4, 0x206AB54)  # each fighter's full health (grows with level)
+    TIMER = 0x20606E2                 # 3 decimal digits (0x199 = 199)
+    PASSWORD = 0x2067904              # two numbers whose hex digits are the password
+
+    def rb(self, address):
+        return self.a.read_byte((address + self.SHIFT) ^ 1)  # read_byte undoes the ^1
+
+    def rw(self, address):
+        return self.a.read_word(address + self.SHIFT)
+
+    def full(self, p):
+        return self.rw(self.FULL_AT[p]) or 1
+
+    def timer(self):
+        v = self.rw(self.TIMER)
+        return (v >> 8) * 100 + bcd(v & 0xFF)
+
+    def char(self, p):
+        c = self.rb(self.CHAR[p])
+        return c if p == 0 else 100 + c   # 100+ = boss (see name)
+
+    def name(self, char):
+        if char is not None and char >= 100:
+            return self.BOSSES.get(char - 100, f"boss {char - 100}")
+        return super().name(char)
+
+    def password(self):
+        lo = self.rw(self.PASSWORD) | self.rw(self.PASSWORD + 2) << 16
+        hi = self.rw(self.PASSWORD + 4) | self.rw(self.PASSWORD + 6) << 16
+        return f"{lo:05x}{hi:05x}" if lo or hi else None
+
+    def select_extras(self):
+        pw = self.password()
+        if self.changed("password", pw) and pw:
+            # Read as single digits, in two groups of five as on screen.
+            speech.say("Password " + " ".join(pw[:5]) + ", " + " ".join(pw[5:]))
+
+
 # First 8 bytes of each game's program (arcade address 0) -> reader class.
 GAMES = {
     bytes.fromhex("092c59d660d42b51"): HSF2,
@@ -404,6 +473,9 @@ GAMES = {
     bytes.fromhex("48d3bfd1c6d78d91"): VampireHunter2,
     bytes.fromhex("11ebea2b261726a4"): VampireSavior2,
     bytes.fromhex("7dfe9ab442e79466"): GemFighter,
+    # CPS3 games start with the board's own boot program, so this is the
+    # same for both Red Earth versions.
+    bytes.fromhex("0004000000000802"): RedEarth,
 }
 
 
