@@ -430,6 +430,8 @@ class RedEarth(FightingGame):
     FULL_AT = (0x206A8D4, 0x206AB54)  # each fighter's full health (grows with level)
     TIMER = 0x20606E2                 # 3 decimal digits (0x199 = 199)
     PASSWORD = 0x2067904              # two numbers whose hex digits are the password
+    PROMPT = 0x206A9A8                # P1 select state: 2 = "Password? Yes / No" showing
+    PROMPT_CURSOR = 0x206A9B3         # 0 Yes, 1 No
 
     def rb(self, address):
         return self.a.read_byte((address + self.SHIFT) ^ 1)  # read_byte undoes the ^1
@@ -459,6 +461,16 @@ class RedEarth(FightingGame):
         return f"{lo:05x}{hi:05x}" if lo or hi else None
 
     def select_extras(self):
+        # After the hero is picked: "Password? Yes / No" (No skips entering
+        # one). The cursor remembers the last choice; Right always picks No.
+        prompt = self.rb(self.PROMPT) == 2
+        choice = "No" if self.rb(self.PROMPT_CURSOR) else "Yes"
+        if self.changed("prompt", prompt) and prompt:
+            speech.say(f"Password? {choice}. Left Yes, right No")
+        elif prompt and self.changed("prompt_choice", choice):
+            speech.say(choice)
+        if prompt:
+            self.last["prompt_choice"] = choice
         pw = self.password()
         if self.changed("password", pw) and pw:
             # Read as single digits, in two groups of five as on screen.
