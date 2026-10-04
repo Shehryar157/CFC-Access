@@ -519,10 +519,14 @@ class RedEarth(FightingGame):
     # three times, one per stats page).
     ROSTER = [0, 4, 10, 7]
     # Player 2 is always a boss, numbered separately; names as on screen.
-    BOSSES = {3: "Hydron"}
+    # (Only Hauzer, the first boss, is confirmed; the bosses' names are
+    # drawn as pictures, so each needs seeing.)
+    BOSSES = {3: "Hauzer"}
     CHAR = (0x206A886, 0x206AB06)
     HEALTH = (0x206A820, 0x206AAA0)
-    FULL_AT = (0x206A8D4, 0x206AB54)  # each fighter's full health (grows with level)
+    # Each fighter's full health (the hero's grows with level). The boss
+    # block is laid out differently from the hero's (checked on Hauzer, 320).
+    FULL_AT = (0x206A8D4, 0x206ABC0)
     TIMER = 0x20606E2                 # 3 decimal digits (0x199 = 199)
     PASSWORD = 0x2067904              # two numbers whose hex digits are the password
     PROMPT = 0x206A9A8                # P1 select state: 2 = "Password? Yes / No" showing
@@ -547,7 +551,7 @@ class RedEarth(FightingGame):
 
     def name(self, char):
         if char is not None and char >= 100:
-            return self.BOSSES.get(char - 100, f"boss {char - 100}")
+            return self.BOSSES.get(char - 100, "the boss")
         return super().name(char)
 
     def password(self):

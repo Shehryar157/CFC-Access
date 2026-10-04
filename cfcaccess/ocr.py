@@ -57,11 +57,32 @@ async def _recognize(image):
     bitmap = SoftwareBitmap.create_copy_from_buffer(
         writer.detach_buffer(), BitmapPixelFormat.BGRA8, image.width, image.height)
     result = await engine.recognize_async(bitmap)
-    return [line.text for line in result.lines]
+    # The recognizer sometimes splits a line into pieces and lists them out
+    # of order, so rebuild the lines from where each word sits.
+    words = []
+    for line in result.lines:
+        for word in line.words:
+            r = word.bounding_rect
+            words.append((r.y + r.height / 2, r.x, r.height, word.text))
+    words.sort()
+    lines, current, current_y, current_h = [], [], None, 0
+    for y, x, h, text in words:
+        if current and abs(y - current_y) > max(h, current_h) * 0.6:
+            lines.append(current)
+            current = []
+        if not current:
+            current_y, current_h = y, h
+        current.append((x, text))
+    if current:
+        lines.append(current)
+    return [" ".join(t for _, t in sorted(line)) for line in lines]
 
 
 def read_text(image):
     """Lines of text recognised in the image (top to bottom)."""
+    # Only the arcade picture: the collection puts artwork at both sides.
+    w, h = image.size
+    image = image.crop((int(w * 0.09), 0, int(w * 0.91), h))
     return asyncio.run(_recognize(prepare(image)))
 
 
