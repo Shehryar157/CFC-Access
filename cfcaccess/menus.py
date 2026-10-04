@@ -1108,7 +1108,17 @@ class MenuReader:
         """
         layers = self.open_layers()
         view = None
+        unknown = None  # the topmost layer we don't know, if any
         for layer in layers:
+            if layer[1] not in SCREENS:
+                # Not a screen we know. Transition and helper layers can sit
+                # above a real menu (some linger after a game closes), so
+                # prefer a known menu further down; only if there's none is
+                # the unknown screen reported.
+                if unknown is None:
+                    unknown = layer
+                log_once(f"SKIPPED UNKNOWN LAYER {layer[1]:#x}")
+                continue
             try:
                 view = self.view(*layer)
             except Exception:
@@ -1116,7 +1126,13 @@ class MenuReader:
             if view is not HIDDEN:
                 break
         else:
-            return None, None
+            if unknown is None:
+                return None, None
+            layer = unknown
+            try:
+                view = self.view(*layer)
+            except Exception:
+                view = None
         if view is None:
             # Something we can't read yet. Say so rather than reading the
             # screen underneath it, which would be misleading.

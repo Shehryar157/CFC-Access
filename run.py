@@ -74,7 +74,11 @@ def play_session(messages, game):
     keys.bind("T", t_pressed)
     while game.is_running():
         reader.poll()
-        arcade_reader.poll()
+        # While a collection menu is open (including the pause menu) the
+        # arcade game isn't being played; after a game closes its memory is
+        # left behind, so don't read fights from it.
+        if reader.last_view is None:
+            arcade_reader.poll()
         keys.poll()
         if screen.auto:
             screen.poll(story_allowed())
