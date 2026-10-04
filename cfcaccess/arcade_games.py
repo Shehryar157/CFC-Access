@@ -506,9 +506,16 @@ class PuzzleFighter:
     ROTATION = 0xFF8470           # byte: where the other gem is (0 up, 1 right, 2 down, 3 left)
     LEVEL = 0xFF0C8C              # level select cursor: 0 Easy, 1 Normal, 2 Hard
     CURSOR = 0xFF0C83             # character select cursor (grid number)
+    # Each player's character, in the game's own numbering (not the grid's):
+    # 0 Morrigan, 1 Chun-Li, 2 Ryu, 3 Ken, 4 Hsien-Ko, 5 Donovan, 6 Felicia,
+    # 7 Sakura (all seen); 8-10 assumed Devilot, Dan, Akuma (10 is always
+    # the last opponent).
+    CHAR = (0xFF0C82, 0xFF0C86)
+    CHAR_ROSTER = [5, 2, 0, 1, 6, 3, 7, 4, 8, 9, 10]   # -> STATS_SPF2X_nn
+    CONTINUE = 0xFF838C           # "Continue?" countdown, 9 to 0
     # Grid number (Ryu, Chun-Li, Sakura, Ken / Morrigan, Hsien-Ko, Donovan,
     # Felicia) -> STATS_SPF2X_nn. Hidden characters not seen yet.
-    ROSTER = [0, 2, 4, 1, 5, 6, 3, 7]
+    ROSTER = [0, 2, 4, 1, 5, 6, 3, 7, 8]  # 8 Devilot (hidden, seen)
     COLOURS = {1: "blue", 2: "yellow", 3: "green", 4: "red"}
     PLACES = ["on top", "to the right", "below", "to the left"]
     DANGER_HEIGHT = 10            # columns 3 and 4 this high: nearly lost
@@ -598,6 +605,11 @@ class PuzzleFighter:
         text = self.r.msg.get(f"STATS_SPF2X_{index:02d}_NAME", "")
         return text.split(" (EN)/")[0] or f"character {grid}"
 
+    def char_name(self, char):
+        index = self.CHAR_ROSTER[char] if 0 <= char < len(self.CHAR_ROSTER) else None
+        text = self.r.msg.get(f"STATS_SPF2X_{index:02d}_NAME", "") if index is not None else ""
+        return text.split(" (EN)/")[0] or f"character {char}"
+
     def in_match(self):
         pivot, other = self.pair(0)
         return pivot is not None and other is not None
@@ -620,7 +632,7 @@ class PuzzleFighter:
     def poll(self):
         a = self.a
         if not self.in_match():
-            for key in ("pairs", "seen", "counts", "cleared", "power", "incoming", "sending"):
+            for key in ("pairs", "seen", "lost", "counts", "cleared", "power", "incoming", "sending"):
                 self.last.pop(key, None)
             level = a.read_byte(self.LEVEL)
             if self.changed("level", level) and level <= 2:
@@ -628,11 +640,13 @@ class PuzzleFighter:
             cursor = a.read_byte(self.CURSOR)
             if self.changed("cursor", cursor):
                 speech.say(self.name(cursor))
+            count = a.read_byte(self.CONTINUE)
+            if self.changed("continue", count) and count <= 9:
+                speech.say(f"Continue? {count}" if count == 9 else str(count))
             self.last["matched"] = False
             return
         if self.last.get("matched") is False:
-            # The opponent's character isn't found yet; say ours.
-            speech.say(f"{self.name(a.read_byte(self.CURSOR))}, match start")
+            speech.say(f"{self.char_name(a.read_byte(self.CHAR[0]))} versus {self.char_name(a.read_byte(self.CHAR[1]))}")
         self.last["matched"] = True
         pivot, other = self.pair(0)
         column = a.read_word(self.COLUMN)
@@ -674,6 +688,14 @@ class PuzzleFighter:
             speech.say(f"{self.where(column, rotation)}, {landing}")
         self.track_board(grid)
         self.track_attacks()
+        # A board with a column filled to the top has lost (one-round match).
+        lost = (max(self.heights(0, grid)) >= 13, max(self.heights(1)) >= 13)
+        if lost != self.last.get("lost") and self.last.get("lost") is not None:
+            if lost[0]:
+                speech.say("You lose")
+            elif lost[1]:
+                speech.say("You win")
+        self.last["lost"] = lost
         tall = max(self.heights(0, grid)[2:4])
         danger = tall >= self.DANGER_HEIGHT
         if danger and self.last.get("danger") is False:
