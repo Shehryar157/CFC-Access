@@ -10,7 +10,7 @@ import sys
 import time
 
 from cfcaccess import game as game_mod
-from cfcaccess import arcade_games, menus, speech, text
+from cfcaccess import arcade_games, hotkeys, menus, speech, text
 
 POLL_SECONDS = 0.05  # check the game 20 times a second
 STARTUP_WAIT = 120   # --with-game: give up if the game hasn't appeared by then
@@ -41,9 +41,19 @@ def play_session(messages, game):
     print(f"pid={game.pid} base={game.base:#x}")
     reader = menus.MenuReader(game, messages)
     arcade_reader = arcade_games.ArcadeReader(game, messages)
+    window = {}
+
+    def game_window():
+        if not window.get("hwnd"):
+            window["hwnd"] = game_mod.find_window(game.pid)
+        return window["hwnd"]
+
+    keys = hotkeys.Hotkeys(game_window)
+    arcade_reader.bind_keys(keys)
     while game.is_running():
         reader.poll()
         arcade_reader.poll()
+        keys.poll()
         time.sleep(POLL_SECONDS)
     print("game closed")
 

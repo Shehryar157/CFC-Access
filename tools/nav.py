@@ -70,11 +70,17 @@ class Nav:
         """Go to the row with this label and press Enter."""
         self.goto_label(label)
         before = self.title()
-        self.press("enter")
+        for _ in range(3):  # a press is sometimes dropped; retry if nothing happened
+            self.press("enter", hold=0.15)
+            if expect:
+                if win.wait_for(lambda: self.title() == expect, timeout):
+                    return
+            elif win.wait_for(lambda: self.title() != before, timeout):
+                return
+            if self.title() != before:
+                break
         if expect:
-            self.expect(expect, timeout)
-        else:
-            win.wait_for(lambda: self.title() != before, timeout)
+            self.expect(expect, 1)
 
     def back(self, expect=None, timeout=3):
         before = self.title()
