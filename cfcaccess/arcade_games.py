@@ -34,7 +34,8 @@ class FightingGame:
     METER_FULL = 1        # bar maximum
     METER_STOCKS = None   # address of each player's stock count, if stocked
     METER_STOCKS_MAX = 0
-    TIMER = None          # byte, two decimal digits
+    TIMER = None          # byte, two decimal digits (or plain, see TIMER_BCD)
+    TIMER_BCD = True
     ROUNDS = (None, None) # byte: rounds won this match
     LOW = 0.25            # "low health" below a quarter
     SPEAK_CHAR_AT_SELECT = True  # say CHAR's name when it changes at select
@@ -85,7 +86,10 @@ class FightingGame:
         return stocks > 0 if self.METER_STOCKS else frac >= 1.0
 
     def timer(self):
-        return bcd(self.a.read_byte(self.TIMER)) if self.TIMER is not None else None
+        if self.TIMER is None:
+            return None
+        v = self.a.read_byte(self.TIMER)
+        return bcd(v) if self.TIMER_BCD else v
 
     def wins(self, p):
         return self.a.read_byte(self.ROUNDS[p]) if self.ROUNDS[p] is not None else None
@@ -316,12 +320,42 @@ class NightWarriors(FightingGame):
             speech.say(self.name(cursor))
 
 
+class VampireSavior(FightingGame):
+    """Vampire Savior: The Lord of Vampire. Health, stocked meter from
+    fbneo-training-mode vsav.lua; select cursor, characters, timer from our
+    tests (2026-10-04). Rounds not found yet (one candidate reset to 0)."""
+
+    STATS = "VSAV"
+    # Arcade numbers -> STATS_VSAV_nn. Seen on screen: 0 Bulleta, 1 Demitri,
+    # 3 Victor, 4 Lord Raptor, 5 Morrigan, 6 Anakaris, 7 Felicia, 10 Sasquatch,
+    # 12 Hsien-Ko, 13 Lilith, 14 Jedah, 15 Q-Bee. Assumed from the series'
+    # order: 2 Jon Talbain, 8 Bishamon, 9 Rikuo, 11 unknown.
+    ROSTER = [1, 5, 6, 8, 7, 9, 10, 11, 12, 13, 14, None, 4, 3, 0, 2]
+    CHAR = (0xFF8782, 0xFF8B82)
+    SPEAK_CHAR_AT_SELECT = False
+    HEALTH = (0xFF8450, 0xFF8850)
+    FULL = 0x120
+    METER = (0xFF850A, 0xFF890A)
+    METER_SIZE = 2
+    METER_FULL = 0x90
+    METER_STOCKS = (0xFF8509, 0xFF8909)
+    TIMER = 0xFF8109
+    TIMER_BCD = False
+    CURSOR = 0xFF8403     # P1 select cursor, same numbering as CHAR
+
+    def select_extras(self):
+        cursor = self.a.read_byte(self.CURSOR)
+        if self.changed("cursor", cursor) and 0 <= cursor < len(self.ROSTER):
+            speech.say(self.name(cursor))
+
+
 # First 8 bytes of each game's program (arcade address 0) -> reader class.
 GAMES = {
     bytes.fromhex("092c59d660d42b51"): HSF2,
     bytes.fromhex("5cb1db2d2156abe4"): Cyberbots,
     bytes.fromhex("bfdc85c2edbf58d2"): Darkstalkers,
     bytes.fromhex("8697200eb97ecc5f"): NightWarriors,
+    bytes.fromhex("faa9173a43f4aec0"): VampireSavior,
 }
 
 
