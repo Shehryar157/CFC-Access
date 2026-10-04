@@ -830,15 +830,65 @@ ID_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 
 def lobby_id(reader, obj):
+    # The same screen enters a lobby ID (6 characters, 0-9 then A-Z) and a
+    # lobby passcode (4 digits): +0x344 is the length, +0x33C the number of
+    # choices per character (36 or 10).
     msg = reader.msg
-    chars = [ID_CHARS[_int(reader, obj + 0x324 + 4 * i) % 36] for i in range(6)]
-    pos = _int(reader, obj + 0x340)
-    if not 0 <= pos < 6:
+    length = _int(reader, obj + 0x344)
+    choices = _int(reader, obj + 0x33C)
+    if not 1 <= length <= 6 or choices not in (10, 36):
         return None
-    lobby = " ".join(chars)  # spaced so screen readers spell it out
-    rows = [Row(f"Character {i + 1}", c, f"ID: {lobby}. {msg.get('HELP_INPUT_LOBBY_ID')}")
+    chars = [ID_CHARS[_int(reader, obj + 0x324 + 4 * i) % choices] for i in range(length)]
+    pos = _int(reader, obj + 0x340)
+    if not 0 <= pos < length:
+        return None
+    code = " ".join(chars)  # spaced so screen readers spell it out
+    if choices == 10:
+        title, name, help_text = msg.get("INPUT_PASSWORD"), "Passcode",             msg.get("HELP_INPUT_PASSWORD")
+    else:
+        title, name, help_text = msg.get("INPUT_LOBBY_ID"), "ID", msg.get("HELP_INPUT_LOBBY_ID")
+    rows = [Row(f"Character {i + 1}", c, f"{name}: {code}. {help_text}")
             for i, c in enumerate(chars)]
-    return View(msg.get("INPUT_LOBBY_ID"), pos, rows)
+    return View(title, pos, rows)
+
+
+# ---- Online > Custom Match > the lobby itself ----
+# Found 2026-10-04 in a lobby with only us in it:
+#   +0x378 our name (UTF-8), +0x47A our ready flag (1 = Ready, 0 = Standby).
+#   +0x338 points into the network lobby data; 0x3140 bytes before that
+#   is the lobby ID as text (6 characters), then at +0xA4 / +0xA8 the
+#   number of players in the lobby and the maximum.
+# Other players' slots aren't decoded yet (none joined while testing).
+LOBBY_CLASS = 0x14052C968
+
+
+def _text(reader, address, size=0x40):
+    raw = reader.game.pm.read_bytes(address, size)
+    return raw.split(b"\0", 1)[0].decode("utf-8", "replace")
+
+
+def lobby(reader, obj):
+    msg = reader.msg
+    pm = reader.game.pm
+    name = _text(reader, obj + 0x378) or "you"
+    ready = _int(reader, obj + 0x47A) & 0xFF == 1
+    info = []
+    try:
+        id_at = pm.read_ulonglong(obj + 0x338) - 0x3140
+        lobby_id = pm.read_bytes(id_at, 6).decode("ascii")
+        if all(c in ID_CHARS for c in lobby_id):
+            info.append("Lobby ID " + " ".join(lobby_id))
+        players, most = _int(reader, id_at + 0xA4), _int(reader, id_at + 0xA8)
+        if 1 <= players <= most <= 4:
+            info.append(f"{players} of {most} players")
+    except Exception:
+        pass
+    status = msg.get("LOBBY_READY") if ready else msg.get("LOBBY_STANDBY")
+    keys = ("Backspace: cancel ready" if ready else
+            "Enter: ready. Backspace: leave. F2: invite. F1: profile")
+    # The status is the row's value, so toggling Ready is announced.
+    rows = [Row(name, status, ". ".join(info + [keys]) + ".")]
+    return View(msg.get("LOBBY"), 0, rows)
 
 
 # ---- Online > Ranked Leaderboard > Select Game ----
@@ -1037,6 +1087,7 @@ SCREENS = {
     0x1405293D0: lobby_settings("CREATE_LOBBY", 10, searching=False),
     0x14052BEB8: lobby_settings("JOIN_LOBBY", 6, searching=True),
     0x14052B580: lobby_id,
+    LOBBY_CLASS: lobby,
     0x14052FF70: leaderboard_game,
     0x140530180: leaderboard,
     0x1405290E8: move_list,
