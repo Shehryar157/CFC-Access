@@ -285,11 +285,43 @@ class Darkstalkers(FightingGame):
             speech.say(self.name(cursor))
 
 
+class NightWarriors(FightingGame):
+    """Night Warriors: Darkstalkers' Revenge / Vampire Hunter. Health,
+    meter from fbneo-training-mode nwarr.lua; select, characters, timer from
+    our tests (2026-10-04). Player 2's data is 0x500 after player 1's."""
+
+    STATS = "VHUNT"
+    # Arcade numbers 1-14 (Demitri, Jon Talbain, Victor, Lord Raptor,
+    # Morrigan, Anakaris, Felicia, Bishamon, Rikuo, Sasquatch, Huitzil,
+    # Pyron, Hsien-Ko, Donovan) -> STATS_VHUNT_nn.
+    ROSTER = [None, 2, 3, 5, 4, 6, 7, 8, 9, 10, 11, 12, 13, 1, 0]
+    CHAR = (0xFF838A, 0xFF888A)
+    SPEAK_CHAR_AT_SELECT = False
+    HEALTH = (0xFF83CB, 0xFF88CB)
+    HEALTH_SIZE = 1
+    FULL = 144
+    METER = (0xFF855F, 0xFF8A5F)
+    METER_FULL = 0x70
+    METER_STOCKS = (0xFF8565, 0xFF8A65)
+    TIMER = 0xFF8E09
+    CURSOR = 0xFF8829     # P1 grid cursor, same numbering as CHAR
+    SPEED = 0xFF81DF      # 0 Normal, 1 Turbo
+
+    def select_extras(self):
+        speed = self.a.read_byte(self.SPEED)
+        if self.changed("speed", speed) and speed <= 1:
+            speech.say(["Normal", "Turbo"][speed])
+        cursor = self.a.read_byte(self.CURSOR)
+        if self.changed("cursor", cursor) and 0 < cursor < len(self.ROSTER):
+            speech.say(self.name(cursor))
+
+
 # First 8 bytes of each game's program (arcade address 0) -> reader class.
 GAMES = {
     bytes.fromhex("092c59d660d42b51"): HSF2,
     bytes.fromhex("5cb1db2d2156abe4"): Cyberbots,
     bytes.fromhex("bfdc85c2edbf58d2"): Darkstalkers,
+    bytes.fromhex("8697200eb97ecc5f"): NightWarriors,
 }
 
 
