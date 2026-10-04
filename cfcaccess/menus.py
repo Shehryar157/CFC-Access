@@ -886,7 +886,8 @@ def lobby(reader, obj):
         pass
     status = msg.get("LOBBY_READY") if ready else msg.get("LOBBY_STANDBY")
     keys = ("Backspace: cancel ready" if ready else
-            "Enter: ready. Backspace: leave. F2: invite. F1: profile")
+            "Enter: ready. Backspace: leave. F2: invite. F1: profile. "
+            "Ctrl: spectate or input delay settings")
     # The status is the row's value, so toggling Ready is announced.
     rows = [Row(name, status, ". ".join(info + [keys]) + ".")]
     return View(msg.get("LOBBY"), 0, rows)
