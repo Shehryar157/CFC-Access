@@ -43,7 +43,7 @@ IGNORED_CLASSES = {
     0x14052C718, 0x14052C4E8, 0x140527968,
 }
 MAX_LAYERS = 24
-EXE_START, EXE_END = 0x140100000, 0x147800000  # vtables live well past the exe header
+EXE_START, EXE_END = 0x140100000, 0x140700000  # where the screen classes (vtables) live
 
 
 @dataclass

@@ -59,11 +59,22 @@ def to_select_game(n):
         t = n.title()
         if t == "Select Game":
             return
+        if t == "Select Mode":
+            n.press("backspace", hold=0.15)
+            win.wait_for(lambda: n.title() == "Select Game", 3)
+            continue
         if t == "Main Menu":
             n.open_row("Offline Play", "Select Game")
             return
         if t is None:
-            pause(n)
+            # Either inside a game or between screens: give a menu a moment
+            # to appear before assuming we're in a game.
+            if win.wait_for(lambda: n.title() is not None, 4):
+                continue
+            try:
+                pause(n)
+            except SystemExit:
+                pass
             continue
         if t == "Pause Menu":
             n.goto_label("Quit")
