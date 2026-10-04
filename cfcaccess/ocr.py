@@ -66,7 +66,7 @@ def read_text(image):
 
 
 class ScreenReader:
-    """F5: read the text on the game screen aloud (story, win quotes,
+    """Enter (in a game, no menu open): read the text on the game screen aloud (story, win quotes,
     endings...). Recognition takes about half a second, so it runs on a
     background thread and the mod keeps polling meanwhile."""
 

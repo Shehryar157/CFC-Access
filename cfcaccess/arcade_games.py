@@ -168,7 +168,8 @@ class FightingGame:
         # (Vampire Savior) only the loser's bar refills between rounds.
         t_prev = self.last.get("t")
         self.last["t"] = t
-        reset = t is not None and t_prev is not None and t >= 60 and t >= t_prev + 20
+        reset = (t is not None and t_prev is not None and t >= 60 and t >= t_prev + 20
+                 and h1 > 0 and h2 > 0)   # the clock is set before the bars fill
         if not self.round_started and (full or reset):
             self.round_started = True
             if (full and was_full is False) or reset:
@@ -189,7 +190,10 @@ class FightingGame:
                 self.last["ko"] = (max(h1, 0), max(h2, 0))
             if t:
                 self.last["clock_ran"] = True   # a 0 before this is just the intro
-            if h1 <= 0 or h2 <= 0 or (t == 0 and self.last.get("clock_ran")):
+            # (Only once both were seen standing: bars can read 0 for a
+            # moment as a round is set up.)
+            if self.last.get("standing") and (
+                    h1 <= 0 or h2 <= 0 or (t == 0 and self.last.get("clock_ran"))):
                 self.round_end(h1, h2)
         self.fight_events(h1, h2)
 

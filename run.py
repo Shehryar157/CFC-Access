@@ -51,7 +51,18 @@ def play_session(messages, game):
     keys = hotkeys.Hotkeys(game_window)
     arcade_reader.bind_keys(keys)
     screen = ocr.ScreenReader(game_window)
-    keys.bind(0x74, screen.read_screen)   # F5: read the text on screen
+
+    def read_story():
+        # Enter reads the text drawn by the arcade game (story, win quotes,
+        # endings), but only inside a game with no collection menu open:
+        # in menus Enter is the game's own confirm key.
+        if arcade_reader.game_reader is None or reader.top_view()[1] is not None:
+            return
+        g = arcade_reader.game_reader
+        if hasattr(g, "round_started") and g.in_match():
+            return  # mid-fight there's no text to read
+        screen.read_screen()
+    keys.bind(0x0D, read_story)
     while game.is_running():
         reader.poll()
         arcade_reader.poll()
