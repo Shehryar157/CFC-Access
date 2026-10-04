@@ -363,6 +363,18 @@ class VampireHunter2(VampireSavior):
     ROSTER = [None, 0, 6, 3, 4, 1, 2, 7, 10, 8, 9, None, None, 5, None, None, 12, 13, None, 11]
 
 
+class VampireSavior2(VampireSavior):
+    """Vampire Savior 2 (Japan only): Vampire Savior's engine and addresses.
+    Select numbers checked on screen 2026-10-04."""
+
+    STATS = "VSAV2"
+    JAPANESE_NAMES = True
+    # Seen: 0 Bulleta, 1 Demitri, 3 Victor, 4 Zabel, 5 Morrigan, 6 Anakaris,
+    # 7 Felicia, 13 Lei-Lei, 14 Jedah? (15 here), 16 Phobos, 17 Pyron,
+    # 19 Donovan. Assumed: 8 Bishamon. 15 is Jedah on screen.
+    ROSTER = [1, 4, None, 7, 8, 5, 6, 10, 11, None, None, None, None, 9, None, 0, 13, 14, None, 12]
+
+
 # First 8 bytes of each game's program (arcade address 0) -> reader class.
 GAMES = {
     bytes.fromhex("092c59d660d42b51"): HSF2,
@@ -371,6 +383,7 @@ GAMES = {
     bytes.fromhex("8697200eb97ecc5f"): NightWarriors,
     bytes.fromhex("faa9173a43f4aec0"): VampireSavior,
     bytes.fromhex("48d3bfd1c6d78d91"): VampireHunter2,
+    bytes.fromhex("11ebea2b261726a4"): VampireSavior2,
 }
 
 

@@ -50,7 +50,7 @@ def resume(n):
         n.goto_label("Resume")
         n.press("enter", hold=0.1)
         win.wait_for(lambda: n.title() is None, 3)
-    time.sleep(0.3)
+    time.sleep(1.2)  # the menu fades out; presses before then are lost
 
 
 def to_select_game(n):
