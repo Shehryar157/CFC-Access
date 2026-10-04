@@ -2,8 +2,6 @@
 
 Screen reader support for **Capcom Fighting Collection** (Steam, PC). It speaks the collection's menus, the arcade games' character select screens, fights, story text and more, through NVDA, JAWS or another screen reader, or Windows' built-in voice if none is running.
 
-Current version: **1.0.0**
-
 ## Contents
 
 - [Installing](#installing)
@@ -17,10 +15,10 @@ Current version: **1.0.0**
 
 ## Installing
 
-1. Download `CFCAccess-Setup-1.0.0.exe` from the [Releases](../../releases) page.
-2. Run it. Windows asks for permission, because the setup writes into the game's folder. Every step is a standard Windows message box, read in full by screen readers.
-3. The setup finds the game through Steam. If it can't, it asks you to choose the game's folder: the one that contains `CapcomFightingCollection.exe`.
-4. When it says "CFC Access is installed", start Capcom Fighting Collection from Steam as usual. A few seconds after the game opens you hear **"CFC Access version 1.0.0 loaded"**.
+1. Download the latest version of CFC Access from the [Releases](../../releases) page.
+2. Run the installer.
+3. The installer finds the game through Steam. If it can't, it asks you to choose the game's folder: the one that contains `CapcomFightingCollection.exe`.
+4. When the installer finishes, start Capcom Fighting Collection from Steam as usual. A few seconds after the game opens you hear "CFC Access version ... loaded".
 
 There's nothing else to set up and no need to start the mod yourself: it starts and stops together with the game.
 
@@ -111,7 +109,7 @@ The fight keys stay silent outside a fight, because none of those values are on 
 
 ## Event sounds
 
-The mod plays a short sound for important moments. Until you add your own sounds, it speaks a word instead. To use sounds, put WAV files with these names in the `CFCAccess\sounds` folder:
+The mod plays a short sound for important moments. To use your own sounds, put WAV files with these names in the `CFCAccess\sounds` folder:
 
 | File | When |
 |---|---|
