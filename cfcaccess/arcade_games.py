@@ -44,6 +44,9 @@ class FightingGame:
     JAPANESE_NAMES = False  # Japan-only games show the Japanese names
     SPEAK_CHAR_AT_SELECT = True  # say CHAR's name when it changes at select
     DEMO_IDLE = 30        # no game key for this many seconds: a demo is playing
+    CONTINUE = None       # byte: the "Continue?" countdown (9 down to 0)
+    CONTINUE_FROM = 9     # the number it starts at
+    HEALTH_CAN_RISE = False  # True if health can go up mid-round (pickups)
 
     def __init__(self, reader):
         self.r = reader
@@ -144,10 +147,14 @@ class FightingGame:
 
     def poll(self):
         c1, c2 = self.char(0), self.char(1)
-        if not self.round_started:
+        if not self.round_started and self.playing():
+            # (In a demo, the machine moves these too: stay quiet.)
             self.select_extras()
+            self.continue_countdown()
             if self.changed("p1", c1) and self.SPEAK_CHAR_AT_SELECT:
                 speech.say(self.name(c1))
+        elif not self.round_started:
+            self.changed("p1", c1)
         else:
             self.changed("p1", c1)
         # A round starts when both health values jump to full (they are 0
@@ -155,20 +162,64 @@ class FightingGame:
         h1, h2 = self.health(0), self.health(1)
         t = self.timer()
         full = h1 == self.full(0) and h2 == self.full(1) and h1 > 0
-        if full and self.last.get("full") is False:
-            self.round_start(c1, c2)
+        was_full = self.last.get("full")
         self.last["full"] = full
-        if full:
+        # The clock jumping back up also starts a round: in some games
+        # (Vampire Savior) only the loser's bar refills between rounds.
+        t_prev = self.last.get("t")
+        self.last["t"] = t
+        reset = t is not None and t_prev is not None and t >= 60 and t >= t_prev + 20
+        if not self.round_started and (full or reset):
             self.round_started = True
-        elif self.round_started:
+            if (full and was_full is False) or reset:
+                self.round_start(c1, c2)
+        elif self.round_started and not full:
+            prev = self.last.get("standing")
+            if (prev and not self.HEALTH_CAN_RISE
+                    and (h1 > prev[0] or h2 > prev[1])):
+                # Health never rises during a round: the bars are refilling
+                # for the next one, so this round is over (some knockouts
+                # and time-outs show no other sign we can read).
+                self.round_end(h1, h2)
+                self.fight_events(h1, h2)
+                return
+            if h1 > 0 and h2 > 0:
+                self.last["standing"] = (h1, h2)   # for judging the round
+            elif "ko" not in self.last or self.last["ko"] is None:
+                self.last["ko"] = (max(h1, 0), max(h2, 0))
             if t:
                 self.last["clock_ran"] = True   # a 0 before this is just the intro
             if h1 <= 0 or h2 <= 0 or (t == 0 and self.last.get("clock_ran")):
                 self.round_end(h1, h2)
         self.fight_events(h1, h2)
 
+    def continue_countdown(self):
+        """Speak "Continue? 9", then 8, 7... Only a count that starts at 9
+        (CONTINUE_FROM) and steps down by one is spoken, so other uses of the byte stay quiet."""
+        if self.CONTINUE is None:
+            return
+        v = self.rb(self.CONTINUE)
+        prev = self.last.get("continue")
+        self.last["continue"] = v
+        if prev is None or v == prev:
+            return
+        if v == self.CONTINUE_FROM:
+            self.last["counting"] = True
+            speech.say(f"Continue? {v}")
+        elif self.last.get("counting") and v == prev - 1:
+            speech.say(str(v))
+        else:
+            self.last["counting"] = False
+
     def round_start(self, c1, c2):
+        if self.last.get("open_round"):
+            # The last round never showed an end we recognise (some timers
+            # don't read 0 at time over): judge it now.
+            self.round_end(0, 0)
+        self.last["open_round"] = True
         self.last["clock_ran"] = False
+        self.last["standing"] = None
+        self.last["ko"] = None
         # Best of three: after someone's second win the next round is a new
         # match (also catches a rematch against the same opponent).
         pair = (c1, c2)
@@ -183,6 +234,15 @@ class FightingGame:
     def round_end(self, h1, h2):
         """Someone is down or the clock ran out: who has more health won."""
         self.round_started = False
+        self.last["open_round"] = False
+        if self.last.get("standing"):
+            # Judge from the last values seen while both were standing: some
+            # games zero both bars at the knockout, or fill them with other
+            # data as the screen changes. A knockout blow still shows: the
+            # loser's last value is the lower one.
+            h1, h2 = self.last["standing"]
+            if h1 == h2 and self.last.get("ko"):
+                h1, h2 = self.last["ko"]
         f1, f2 = h1 / self.full(0), h2 / self.full(1)
         if f1 > f2:
             self.own_wins[0] += 1
@@ -246,6 +306,7 @@ class HSF2(FightingGame):
     # Arcade character order (Ryu, E. Honda, Blanka, Guile, Ken, ...) ->
     # the collection's roster order (STATS_HSF2_nn).
     ROSTER = [0, 2, 4, 6, 1, 3, 5, 7, 15, 14, 12, 13, 9, 8, 10, 11, 16]
+    CONTINUE = 0xFF8643   # found 2026-10-04 by losing a match (scratch/loserun.py)
     CHAR = (0xFF8667, 0xFF8A67)
     HEALTH = (0xFF8366, 0xFF8766)
     FULL = 144
@@ -281,6 +342,8 @@ class Cyberbots(FightingGame):
     FULL = 152
     METER = (0xFF8534, 0xFF8934)
     METER_FULL = 63
+    CONTINUE = 0xFF84AF
+    CONTINUE_FROM = 20
     TIMER = 0xFFEBA0
     PILOT = 0xFF8529      # P1 pilot cursor, arcade order
     PILOTS = [0, 2, 1, 5, 3, 4]  # arcade pilot -> STATS_CYBOTS_nn (Jin, Mary, ...)
@@ -316,6 +379,7 @@ class Darkstalkers(FightingGame):
     METER_FULL = 0x50
     TIMER = 0xFF9409
     CURSOR = 0xFF8729     # P1 grid cursor, same numbering as CHAR
+    CONTINUE = 0xFF8713
     SPEED = 0xFFF424      # 0, 1, 2 = speed 1, 2, 3
 
     def select_extras(self):
@@ -347,6 +411,7 @@ class NightWarriors(FightingGame):
     METER_STOCKS = (0xFF8565, 0xFF8A65)
     TIMER = 0xFF8E09
     CURSOR = 0xFF8829     # P1 grid cursor, same numbering as CHAR
+    CONTINUE = 0xFF8813
     SPEED = 0xFF81DF      # 0 Normal, 1 Turbo
 
     def select_extras(self):
@@ -380,6 +445,7 @@ class VampireSavior(FightingGame):
     TIMER = 0xFF8109
     TIMER_BCD = False
     CURSOR = 0xFF8403     # P1 select cursor, same numbering as CHAR
+    CONTINUE = 0xFF878C
 
     def select_extras(self):
         cursor = self.a.read_byte(self.CURSOR)
@@ -428,6 +494,7 @@ class GemFighter(FightingGame):
     METER_FULL = 0x60
     METER_STOCKS = (0xFF8594, 0xFF8994)
     TIMER = 0xFF8188
+    CONTINUE = 0xFF878C
 
 
 class RedEarth(FightingGame):
@@ -442,6 +509,7 @@ class RedEarth(FightingGame):
     """
 
     SHIFT = 0x80020 - 0x2000000
+    HEALTH_CAN_RISE = True    # food pickups restore health mid-fight
     STATS = "WARZARD"
     # Heroes: 0 Leo, 1 Kenji, 2 Tessa, 3 Mai Ling (STATS_WARZARD has each
     # three times, one per stats page).

@@ -10,7 +10,7 @@ import sys
 import time
 
 from cfcaccess import game as game_mod
-from cfcaccess import arcade_games, hotkeys, menus, speech, text
+from cfcaccess import arcade_games, hotkeys, menus, ocr, speech, text
 
 POLL_SECONDS = 0.05  # check the game 20 times a second
 STARTUP_WAIT = 120   # --with-game: give up if the game hasn't appeared by then
@@ -50,6 +50,8 @@ def play_session(messages, game):
 
     keys = hotkeys.Hotkeys(game_window)
     arcade_reader.bind_keys(keys)
+    screen = ocr.ScreenReader(game_window)
+    keys.bind(0x74, screen.read_screen)   # F5: read the text on screen
     while game.is_running():
         reader.poll()
         arcade_reader.poll()
