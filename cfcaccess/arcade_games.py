@@ -13,6 +13,8 @@ extra select-screen announcements.
 Addresses come from fbneo-training-mode (github.com/peon2) and from our own
 tests (see each game's comments).
 """
+import ctypes
+
 from . import arcade, sounds, speech
 
 
@@ -463,6 +465,169 @@ class RedEarth(FightingGame):
             speech.say("Password " + " ".join(pw[:5]) + ", " + " ".join(pw[5:]))
 
 
+class PuzzleFighter:
+    """Super Puzzle Fighter II Turbo / X (tested 2026-10-04).
+
+    Not a fighting game: each player stacks falling pairs of gems on a board
+    6 columns wide and 13 rows high. We say each new pair, where it moves
+    and how it turns; number keys read a column, H / G every column's
+    height, M the next pair.
+
+    Each board is 13 rows of 16 bytes (a wall word, 6 cells, a wall word),
+    top row first; a cell is a 2-byte word:
+      low byte 0          empty
+      low byte 1-4        a gem: 1 blue, 2 yellow, 3 green, 4 red
+      low byte 9-12       a crash gem (8 + colour)
+      low byte 7          a counter gem; high byte = colour * 16 + count
+    Other codes (diamond, power gems) are logged so we can name them.
+    """
+
+    BOARD = (0xFFAB10, 0xFFAF10)
+    PAIR = (0xFF8452, 0xFF8852)   # falling pair: pivot (bottom) gem, other gem
+    NEXT = (0xFF8456, 0xFF8856)
+    COLUMN = 0xFF8310             # pivot gem's column, 0-5
+    ROTATION = 0xFF8470           # byte: where the other gem is (0 up, 1 right, 2 down, 3 left)
+    CHAR = (0xFF8448, 0xFF8848)   # select-grid number
+    LEVEL = 0xFF0C8C              # level select cursor: 0 Easy, 1 Normal, 2 Hard
+    CURSOR = 0xFF0C83             # character select cursor (grid number)
+    # Grid number (Ryu, Chun-Li, Sakura, Ken / Morrigan, Hsien-Ko, Donovan,
+    # Felicia) -> STATS_SPF2X_nn. Hidden characters not seen yet.
+    ROSTER = [0, 2, 4, 1, 5, 6, 3, 7]
+    COLOURS = {1: "blue", 2: "yellow", 3: "green", 4: "red"}
+    PLACES = ["on top", "to the right", "below", "to the left"]
+    DANGER_HEIGHT = 10            # columns 3 and 4 this high: nearly lost
+
+    def __init__(self, reader):
+        self.r = reader
+        self.a = reader.arcade
+        self.last = {}
+        self.unknown = set()
+
+    # ---- reading ----
+    def gem(self, w):
+        lo, hi = w & 0xFF, w >> 8
+        if lo == 0:
+            return None
+        if lo in self.COLOURS and hi == 0:
+            return self.COLOURS[lo]
+        if lo - 8 in self.COLOURS:
+            return self.COLOURS[lo - 8] + " crash"
+        if lo == 7 and hi >> 4 in self.COLOURS:
+            return f"{self.COLOURS[hi >> 4]} counter {hi & 15}"
+        if lo in self.COLOURS:
+            return "power " + self.COLOURS[lo]
+        if w not in self.unknown:
+            self.unknown.add(w)
+            print(f"PUZZLE: unknown gem code {w:#06x}")
+        return "diamond" if lo == 5 else f"gem {w:#x}"
+
+    def column_gems(self, p, c):
+        """Gems in column c (0-5), bottom first."""
+        base = self.BOARD[p]
+        out = []
+        for r in range(12, -1, -1):
+            g = self.gem(self.a.read_word(base + 0x10 * r + 2 + 2 * c))
+            if g is None:
+                break
+            out.append(g)
+        return out
+
+    def heights(self, p):
+        return [len(self.column_gems(p, c)) for c in range(6)]
+
+    def pair(self, p, address=None):
+        a = address if address is not None else self.PAIR[p]
+        return self.gem(self.a.read_word(a)), self.gem(self.a.read_word(a + 2))
+
+    def name(self, grid):
+        index = self.ROSTER[grid] if 0 <= grid < len(self.ROSTER) else None
+        if index is None:
+            return f"character {grid}"
+        text = self.r.msg.get(f"STATS_SPF2X_{index:02d}_NAME", "")
+        return text.split(" (EN)/")[0] or f"character {grid}"
+
+    def in_match(self):
+        pivot, other = self.pair(0)
+        return pivot is not None and other is not None
+
+    def changed(self, key, value):
+        old = self.last.get(key)
+        self.last[key] = value
+        return old is not None and old != value
+
+    @staticmethod
+    def describe(pivot, other, rotation):
+        if rotation == 0:
+            return f"{other} over {pivot}"
+        if rotation == 2:
+            return f"{pivot} over {other}"
+        left, right = (pivot, other) if rotation == 1 else (other, pivot)
+        return f"{left}, {right}"
+
+    # ---- polling ----
+    def poll(self):
+        a = self.a
+        if not self.in_match():
+            self.last.pop("pair", None)
+            level = a.read_byte(self.LEVEL)
+            if self.changed("level", level) and level <= 2:
+                speech.say(["Easy", "Normal", "Hard"][level])
+            cursor = a.read_byte(self.CURSOR)
+            if self.changed("cursor", cursor):
+                speech.say(self.name(cursor))
+            self.last["matched"] = False
+            return
+        if self.last.get("matched") is False:
+            speech.say(f"{self.name(a.read_byte(self.CHAR[0]))} versus {self.name(a.read_byte(self.CHAR[1]))}")
+        self.last["matched"] = True
+        pivot, other = self.pair(0)
+        column = a.read_word(self.COLUMN)
+        rotation = a.read_byte(self.ROTATION) & 3
+        pair = (pivot, other)
+        new_pair = self.last.get("pair") != pair
+        self.last["pair"] = pair
+        moved = self.changed("column", column)
+        turned = self.changed("rotation", rotation)
+        if new_pair:
+            self.last["column"], self.last["rotation"] = column, rotation
+            speech.say(self.describe(pivot, other, rotation))
+        elif turned:
+            speech.say(f"{other} {self.PLACES[rotation]}")
+        elif moved:
+            speech.say(self.where(column, rotation))
+        tall = max(self.heights(0)[2:4])
+        danger = tall >= self.DANGER_HEIGHT
+        if danger and self.last.get("danger") is False:
+            sounds.play("danger")
+        self.last["danger"] = danger
+
+    @staticmethod
+    def where(column, rotation):
+        if rotation == 1:
+            return f"columns {column + 1} and {column + 2}"
+        if rotation == 3:
+            return f"columns {column} and {column + 1}"
+        return f"column {column + 1}"
+
+    # ---- hotkey readouts ----
+    def read_column(self, n):
+        shifted = bool(ctypes.windll.user32.GetAsyncKeyState(0x10) & 0x8000)
+        p = 1 if shifted else 0
+        gems = self.column_gems(p, n - 1)
+        who = "Opponent column" if p else "Column"
+        return f"{who} {n}: " + (", ".join(gems) if gems else "empty")
+
+    def your_health(self):
+        return "Heights " + ", ".join(str(h) for h in self.heights(0))
+
+    def enemy_health(self):
+        return "Opponent heights " + ", ".join(str(h) for h in self.heights(1))
+
+    def meter(self):
+        pivot, other = self.pair(0, self.NEXT[0])
+        return f"Next {other} over {pivot}"
+
+
 # First 8 bytes of each game's program (arcade address 0) -> reader class.
 GAMES = {
     bytes.fromhex("092c59d660d42b51"): HSF2,
@@ -476,6 +641,7 @@ GAMES = {
     # CPS3 games start with the board's own boot program, so this is the
     # same for both Red Earth versions.
     bytes.fromhex("0004000000000802"): RedEarth,
+    bytes.fromhex("79b036f011cc1fdf"): PuzzleFighter,
 }
 
 
@@ -493,18 +659,21 @@ class ArcadeReader:
     def key(self):
         return type(self.game_reader).__name__ if self.game_reader else None
 
-    def speak_stat(self, method):
+    def speak_stat(self, method, *args):
         g = self.game_reader
         if g is None or not hasattr(g, method) or not g.in_match():
             return  # outside a match these stats aren't on screen: stay silent
         try:
-            speech.say(getattr(g, method)())
+            speech.say(getattr(g, method)(*args))
         except Exception:
             speech.say("Not available")
 
     def bind_keys(self, hotkeys):
         for key, method in self.KEYS.items():
             hotkeys.bind(key, lambda m=method: self.speak_stat(m))
+        # Number keys 1-6: read a board column (Super Puzzle Fighter).
+        for n in range(1, 7):
+            hotkeys.bind(str(n), lambda n=n: self.speak_stat("read_column", n))
 
     def poll(self):
         a = self.arcade

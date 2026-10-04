@@ -23,6 +23,7 @@ EVENTS = {
     "time_low": "10 seconds",
     "round_won": "Round won",
     "round_lost": "Round lost",
+    "danger": "Danger",          # Puzzle Fighter: middle columns nearly full
 }
 
 

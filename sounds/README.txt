@@ -10,5 +10,6 @@ speaks a short phrase instead.
   time_low.wav            10 seconds left on the round timer
   round_won.wav           you win a round
   round_lost.wav          you lose a round
+  danger.wav              Super Puzzle Fighter: your middle columns are nearly full
 
 Only WAV files work, and one plays at a time.
