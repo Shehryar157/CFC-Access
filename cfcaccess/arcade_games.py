@@ -54,8 +54,9 @@ class FightingGame:
 
     def health(self, p):
         v = self.read(self.HEALTH[p], self.HEALTH_SIZE)
-        top = 0x8000 if self.HEALTH_SIZE == 2 else 0x80
-        return v - 2 * top if v >= top else v  # it can dip below 0
+        if self.HEALTH_SIZE == 2 and v >= 0x8000:
+            return v - 0x10000  # a 2-byte health can dip below 0
+        return v
 
     def name(self, char):
         if char is None:
@@ -215,9 +216,23 @@ class HSF2(FightingGame):
             speech.say(self.PLTYPES[pltype])
 
 
+class Cyberbots(FightingGame):
+    """Cyberbots: Fullmetal Madness. Health, meter and timer from
+    fbneo-training-mode cybots.lua; pilot/robot select and rounds pending."""
+
+    STATS = "CYBOTS"
+    HEALTH = (0xFF81E5, 0xFF85E5)
+    HEALTH_SIZE = 1
+    FULL = 152
+    METER = (0xFF8534, 0xFF8934)
+    METER_FULL = 63
+    TIMER = 0xFFEBA0
+
+
 # First 8 bytes of each game's program (arcade address 0) -> reader class.
 GAMES = {
     bytes.fromhex("092c59d660d42b51"): HSF2,
+    bytes.fromhex("5cb1db2d2156abe4"): Cyberbots,
 }
 
 
