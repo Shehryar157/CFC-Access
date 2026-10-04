@@ -38,6 +38,7 @@ class FightingGame:
     TIMER_BCD = True
     ROUNDS = (None, None) # byte: rounds won this match
     LOW = 0.25            # "low health" below a quarter
+    JAPANESE_NAMES = False  # Japan-only games show the Japanese names
     SPEAK_CHAR_AT_SELECT = True  # say CHAR's name when it changes at select
 
     def __init__(self, reader):
@@ -72,7 +73,8 @@ class FightingGame:
         # Some fighters have different names in Japan and elsewhere; the text
         # file gives both ("Balrog (EN)/M. Bison (JP)"). Use the English one.
         if "(EN)/" in text:
-            text = text.split(" (EN)/")[0]
+            english, rest = text.split(" (EN)/", 1)
+            text = rest.replace(" (JP)", "") if self.JAPANESE_NAMES else english
         return text or f"character {char}"
 
     def meter_parts(self, p):
@@ -349,6 +351,18 @@ class VampireSavior(FightingGame):
             speech.say(self.name(cursor))
 
 
+class VampireHunter2(VampireSavior):
+    """Vampire Hunter 2 (Japan only): Vampire Savior's engine and addresses.
+    Select numbers checked on screen 2026-10-04."""
+
+    STATS = "VHUNT2"
+    JAPANESE_NAMES = True
+    # Seen: 1 Demitri, 2 Gallon, 3 Victor, 4 Zabel, 5 Morrigan, 6 Anakaris,
+    # 7 Felicia, 10 Sasquatch, 13 Lei-Lei, 16 Phobos, 17 Pyron, 19 Donovan.
+    # Assumed: 8 Bishamon, 9 Aulbath (as in Vampire Savior).
+    ROSTER = [None, 0, 6, 3, 4, 1, 2, 7, 10, 8, 9, None, None, 5, None, None, 12, 13, None, 11]
+
+
 # First 8 bytes of each game's program (arcade address 0) -> reader class.
 GAMES = {
     bytes.fromhex("092c59d660d42b51"): HSF2,
@@ -356,6 +370,7 @@ GAMES = {
     bytes.fromhex("bfdc85c2edbf58d2"): Darkstalkers,
     bytes.fromhex("8697200eb97ecc5f"): NightWarriors,
     bytes.fromhex("faa9173a43f4aec0"): VampireSavior,
+    bytes.fromhex("48d3bfd1c6d78d91"): VampireHunter2,
 }
 
 
