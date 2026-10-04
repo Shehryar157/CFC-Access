@@ -375,6 +375,25 @@ class VampireSavior2(VampireSavior):
     ROSTER = [1, 4, None, 7, 8, 5, 6, 10, 11, None, None, None, None, 9, None, 0, 13, 14, None, 12]
 
 
+class GemFighter(FightingGame):
+    """Super Gem Fighter Mini Mix / Pocket Fighter. Health, meter, timer from
+    fbneo-training-mode sgemf.lua; select cursor and characters from our
+    tests (2026-10-04)."""
+
+    STATS = "PFIGHT"
+    # Arcade numbers (seen): 0 Ryu, 1 Ken, 2 Chun-Li, 3 Sakura, 4 Morrigan,
+    # 5 Hsien-Ko, 6 Felicia, 7 Tessa, 8 Ibuki, 9 Zangief; assumed 10 Dan,
+    # 11 Akuma (hidden).
+    ROSTER = [0, 1, 2, 4, 6, 7, 8, 9, 5, 3, 10, 11]
+    CHAR = (0xFF8781, 0xFF8B81)
+    HEALTH = (0xFF8440, 0xFF8840)
+    FULL = 144
+    METER = (0xFF8595, 0xFF8995)
+    METER_FULL = 0x60
+    METER_STOCKS = (0xFF8594, 0xFF8994)
+    TIMER = 0xFF8188
+
+
 # First 8 bytes of each game's program (arcade address 0) -> reader class.
 GAMES = {
     bytes.fromhex("092c59d660d42b51"): HSF2,
@@ -384,6 +403,7 @@ GAMES = {
     bytes.fromhex("faa9173a43f4aec0"): VampireSavior,
     bytes.fromhex("48d3bfd1c6d78d91"): VampireHunter2,
     bytes.fromhex("11ebea2b261726a4"): VampireSavior2,
+    bytes.fromhex("7dfe9ab442e79466"): GemFighter,
 }
 
 
