@@ -68,6 +68,9 @@ def focus(hwnd):
     # the game's Coin key. F24 exists in Windows but on no real keyboard.
     user32.keybd_event(0x87, 0, 0, 0)
     user32.keybd_event(0x87, 0, KEYEVENTF_KEYUP, 0)
+    if user32.IsIconic(hwnd):
+        user32.ShowWindow(hwnd, 9)  # SW_RESTORE: un-minimize
+        time.sleep(0.5)
     user32.SetForegroundWindow(hwnd)
     time.sleep(0.2)
 
