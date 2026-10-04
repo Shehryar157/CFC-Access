@@ -62,7 +62,11 @@ class FightingGame:
     def name(self, char):
         if char is None:
             return "opponent"
-        index = self.ROSTER[char] if self.ROSTER and 0 <= char < len(self.ROSTER) else char
+        index = self.ROSTER[char] if self.ROSTER and 0 <= char < len(self.ROSTER) else None
+        if self.ROSTER is None:
+            index = char
+        if index is None:
+            return f"character {char}"
         text = self.r.msg.get(f"STATS_{self.STATS}_{index:02d}_NAME", "")
         # Some fighters have different names in Japan and elsewhere; the text
         # file gives both ("Balrog (EN)/M. Bison (JP)"). Use the English one.
@@ -250,10 +254,42 @@ class Cyberbots(FightingGame):
             speech.say(msg.get(f"STATS_CYBOTS_{self.BODIES[body]:02d}_NAME", ""))
 
 
+class Darkstalkers(FightingGame):
+    """Darkstalkers: The Night Warriors / Vampire. Health and meter from
+    fbneo-training-mode dstlk.lua; select, characters, timer from our tests
+    (2026-10-04); rounds provisional."""
+
+    STATS = "VAMP"
+    # Arcade character numbers (1 Demitri, 2 Jon Talbain, 3 Victor,
+    # 4 Lord Raptor, 5 Morrigan, 6 Anakaris, 7 Felicia, 8 Bishamon, 9 Rikuo,
+    # 10 Sasquatch) -> STATS_VAMP_nn. 0 and 11+ are the bosses (not seen yet).
+    ROSTER = [None, 0, 1, 3, 2, 4, 5, 6, 7, 8, 9]
+    CHAR = (0xFF838A, 0xFF878A)
+    SPEAK_CHAR_AT_SELECT = False
+    HEALTH = (0xFF83CB, 0xFF87CB)
+    HEALTH_SIZE = 1
+    FULL = 0x90
+    METER = (0xFF855F, 0xFF895F)
+    METER_FULL = 0x50
+    TIMER = 0xFF9409
+    ROUNDS = (0xFF8336, 0xFF8736)   # provisional: seen 0 -> 1 once
+    CURSOR = 0xFF8729     # P1 grid cursor, same numbering as CHAR
+    SPEED = 0xFFF424      # 0, 1, 2 = speed 1, 2, 3
+
+    def select_extras(self):
+        speed = self.a.read_byte(self.SPEED)
+        if self.changed("speed", speed) and speed <= 2:
+            speech.say(f"Speed {speed + 1}")
+        cursor = self.a.read_byte(self.CURSOR)
+        if self.changed("cursor", cursor) and 0 < cursor < len(self.ROSTER):
+            speech.say(self.name(cursor))
+
+
 # First 8 bytes of each game's program (arcade address 0) -> reader class.
 GAMES = {
     bytes.fromhex("092c59d660d42b51"): HSF2,
     bytes.fromhex("5cb1db2d2156abe4"): Cyberbots,
+    bytes.fromhex("bfdc85c2edbf58d2"): Darkstalkers,
 }
 
 
