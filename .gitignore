@@ -8,3 +8,5 @@ loader/*.dll
 loader/*.lib
 loader/*.pdb
 settings.json
+build_log.txt
+selftest.txt

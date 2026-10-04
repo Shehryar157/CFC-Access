@@ -51,8 +51,10 @@ SHORTCUTS = {16: "special move button", 18: "down plus special move button",
              32: "EX button"}
 
 
-def load_icon_names(game_dir=text.GAME_DIR):
+def load_icon_names(game_dir=None):
     """Icon names in order, from the icon font's GII file in msg.arc."""
+    from .paths import find_game_dir
+    game_dir = game_dir or find_game_dir()
     path = game_dir + "\\" + text.MSG_ARC
     for entry in arc.read_entries(path):
         if entry["type"] == ICON_TYPE and entry["name"] == ICON_FILE:

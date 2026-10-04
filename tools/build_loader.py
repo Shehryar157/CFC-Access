@@ -12,7 +12,9 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
-from cfcaccess.text import GAME_DIR  # noqa: E402
+from cfcaccess.paths import find_game_dir  # noqa: E402
+
+GAME_DIR = find_game_dir()
 
 ZIG = r"E:\code\mods\tools\zig\zig.exe"
 LOADER = os.path.join(ROOT, "loader")

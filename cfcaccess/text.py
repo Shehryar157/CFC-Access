@@ -9,7 +9,6 @@ import re
 
 from . import arc, gmd
 
-GAME_DIR = r"D:\Steam\steamapps\common\CAPCOM FIGHTING COLLECTION"
 MSG_ARC = os.path.join("nativeDX11x64", "arc", "pc", "msg.arc")
 GMD_TYPE = 0x242BB29A
 
@@ -25,7 +24,11 @@ def clean(text):
 
 
 class Messages:
-    def __init__(self, game_dir=GAME_DIR, lang="eng"):
+    def __init__(self, game_dir=None, lang="eng"):
+        from .paths import find_game_dir
+        game_dir = game_dir or find_game_dir()
+        if not game_dir:
+            raise FileNotFoundError("Capcom Fighting Collection's folder was not found")
         path = os.path.join(game_dir, MSG_ARC)
         wanted = rf"ui\0_system\00_font\menu_{lang}"
         for entry in arc.read_entries(path):

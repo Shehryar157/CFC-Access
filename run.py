@@ -10,11 +10,11 @@ import sys
 import time
 
 from cfcaccess import game as game_mod
-from cfcaccess import arcade_games, hotkeys, menus, ocr, speech, text
+from cfcaccess import VERSION, arcade_games, hotkeys, menus, ocr, paths, speech, text
 
 POLL_SECONDS = 0.05  # check the game 20 times a second
 STARTUP_WAIT = 120   # --with-game: give up if the game hasn't appeared by then
-HERE = os.path.dirname(os.path.abspath(__file__))
+HERE = paths.app_dir()   # logs go here (next to the exe when installed)
 
 
 def setup_log():
@@ -37,7 +37,7 @@ def already_running():
 
 
 def play_session(messages, game):
-    speech.say("Connected to Capcom Fighting Collection.")
+    speech.say(f"CFC Access version {VERSION} loaded.")
     print(f"pid={game.pid} base={game.base:#x}")
     reader = menus.MenuReader(game, messages)
     arcade_reader = arcade_games.ArcadeReader(game, messages)
@@ -96,7 +96,27 @@ def wait_for_game(timeout=None):
     return None
 
 
+def self_test():
+    """--selftest: check the parts load (used after building); no speech."""
+    report = [f"CFC Access {VERSION}", f"folder: {HERE}"]
+    for name, check in [
+            ("game folder", lambda: paths.find_game_dir()),
+            ("game text", lambda: len(text.Messages()._by_key)),
+            ("speech library", lambda: speech.screen_reader() or "SAPI fallback"),
+            ("text recognition", lambda: ocr.read_text(__import__("PIL.Image").Image.new("RGB", (64, 64)))),
+    ]:
+        try:
+            report.append(f"{name}: OK {check()!r}")
+        except Exception as e:
+            report.append(f"{name}: FAILED {e!r}")
+    with open(os.path.join(HERE, "selftest.txt"), "w", encoding="utf-8") as f:
+        f.write(chr(10).join(report) + chr(10))
+
+
 def main():
+    if "--selftest" in sys.argv:
+        self_test()
+        return
     if already_running():
         return  # quietly: the running copy owns the log and the speech
     setup_log()
@@ -111,7 +131,7 @@ def main():
         play_session(messages, game)
         return
     reader = speech.screen_reader() or "no screen reader, using SAPI"
-    speech.say(f"CFC Access started ({reader}). Waiting for Capcom Fighting Collection.")
+    speech.say(f"CFC Access version {VERSION} started ({reader}). Waiting for Capcom Fighting Collection.")
     while True:
         play_session(messages, wait_for_game())
         speech.say("Capcom Fighting Collection closed.")
