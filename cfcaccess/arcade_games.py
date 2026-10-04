@@ -40,6 +40,7 @@ class HSF2:
         self.r = reader
         self.last = {}
         self.last_pair = None
+        self.round_started = False
 
     def name(self, char):
         msg = self.r.msg
@@ -79,6 +80,10 @@ class HSF2:
         # during the versus screen, and the opponent is filled in by then).
         h1, h2 = self.health(self.P1), self.health(self.P2)
         full = h1 == h2 == self.FULL
+        if full:
+            self.round_started = True
+        elif h1 <= 0 or h2 <= 0:
+            self.round_started = False   # someone is down: the round is over
         if full and self.last.get("full") is False:
             pair = (p1_char, p2_char)
             if pair != self.last_pair:
@@ -98,9 +103,16 @@ class HSF2:
         self.last[key] = now_true
         return now_true and before is False
 
+    def in_match(self):
+        """A round is being fought: both fighters standing, clock running."""
+        a = self.r.arcade
+        h1, h2 = self.health(self.P1), self.health(self.P2)
+        t = a.read_byte(self.TIMER)
+        return 0 < h1 <= self.FULL and 0 < h2 <= self.FULL and t > 0 and self.round_started
+
     def fight_events(self, h1, h2):
         a = self.r.arcade
-        in_round = 0 < h1 <= self.FULL and 0 < h2 <= self.FULL
+        in_round = self.in_match()
         low = self.LOW * self.FULL
         if self.crossed("p1_low", in_round and h1 < low):
             sounds.play("low_health")
@@ -170,8 +182,9 @@ class ArcadeReader:
     KEYS = {"H": "your_health", "G": "enemy_health", "T": "time_left", "M": "meter", "R": "rounds"}
 
     def speak_stat(self, method):
-        if self.game_reader is None or not hasattr(self.game_reader, method):
-            speech.say("Not in a fight")
+        g = self.game_reader
+        if g is None or not hasattr(g, method) or not g.in_match():
+            speech.say("Not in a match")
             return
         try:
             speech.say(getattr(self.game_reader, method)())
