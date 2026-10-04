@@ -10,7 +10,7 @@ Addresses for Hyper Street Fighter II come from fbneo-training-mode's
 hsf2.lua (health, positions, fight phase) and from our own tests at the
 select screens (2026-10-04, see the comments below).
 """
-from . import arcade, speech
+from . import arcade, sounds, speech
 
 # First 8 bytes of each game's program (arcade address 0) -> game key.
 FINGERPRINTS = {
@@ -87,6 +87,42 @@ class HSF2:
             else:
                 speech.say("Next round")
         self.last["full"] = full
+        self.fight_events(h1, h2)
+
+    # ---- automatic event sounds (see sounds.py for the file names) ----
+    LOW = 0.25  # "low health" below a quarter
+
+    def crossed(self, key, now_true):
+        """True once when a condition becomes true (not while it stays true)."""
+        before = self.last.get(key)
+        self.last[key] = now_true
+        return now_true and before is False
+
+    def fight_events(self, h1, h2):
+        a = self.r.arcade
+        in_round = 0 < h1 <= self.FULL and 0 < h2 <= self.FULL
+        low = self.LOW * self.FULL
+        if self.crossed("p1_low", in_round and h1 < low):
+            sounds.play("low_health")
+        if self.crossed("p2_low", in_round and h2 < low):
+            sounds.play("enemy_low_health")
+        if self.crossed("p1_super", in_round and a.read_byte(self.P1 + self.METER) >= self.METER_FULL):
+            sounds.play("super_ready")
+        if self.crossed("p2_super", in_round and a.read_byte(self.P2 + self.METER) >= self.METER_FULL):
+            sounds.play("enemy_super_ready")
+        t = a.read_byte(self.TIMER)
+        if self.crossed("time_low", in_round and (t >> 4) * 10 + (t & 15) <= 10):
+            sounds.play("time_low")
+        # Round result: whoever's rounds-won counter goes up.
+        w1 = a.read_byte(self.P1 + self.ROUNDS)
+        w2 = a.read_byte(self.P2 + self.ROUNDS)
+        prev = self.last.get("wins")
+        self.last["wins"] = (w1, w2)
+        if prev is not None:
+            if w1 == prev[0] + 1:
+                sounds.play("round_won")
+            elif w2 == prev[1] + 1:
+                sounds.play("round_lost")
 
 
     # ---- hotkey readouts ----
