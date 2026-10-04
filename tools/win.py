@@ -25,7 +25,9 @@ SCAN = {
     "z": (0x2C, False), "x": (0x2D, False), "c": (0x2E, False), "v": (0x2F, False),
     "a": (0x1E, False), "s": (0x1F, False), "d": (0x20, False), "w": (0x11, False),
     "q": (0x10, False), "e": (0x12, False), "f1": (0x3B, False),
-    "ctrl": (0x1D, False), "f2": (0x3C, False), "f3": (0x3D, False), "f4": (0x3E, False),
+    "ctrl": (0x1D, False), "u": (0x16, False), "i": (0x17, False), "o": (0x18, False),
+    "j": (0x24, False), "k": (0x25, False), "l": (0x26, False), "ralt": (0x38, True),
+    "g": (0x22, False), "h": (0x23, False), "t": (0x14, False), "m": (0x32, False), "r": (0x13, False), "f2": (0x3C, False), "f3": (0x3D, False), "f4": (0x3E, False),
     "f5": (0x3F, False), "f6": (0x40, False), "f7": (0x41, False), "f8": (0x42, False),
     "f9": (0x43, False), "f10": (0x44, False), "alt": (0x38, False), "rctrl": (0x1D, True), "shift": (0x2A, False), "y": (0x15, False),
 }

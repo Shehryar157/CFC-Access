@@ -37,6 +37,7 @@ class FightingGame:
     TIMER = None          # byte, two decimal digits
     ROUNDS = (None, None) # byte: rounds won this match
     LOW = 0.25            # "low health" below a quarter
+    SPEAK_CHAR_AT_SELECT = True  # say CHAR's name when it changes at select
 
     def __init__(self, reader):
         self.r = reader
@@ -116,7 +117,7 @@ class FightingGame:
         c1, c2 = self.char(0), self.char(1)
         if not self.round_started:
             self.select_extras()
-            if self.changed("p1", c1):
+            if self.changed("p1", c1) and self.SPEAK_CHAR_AT_SELECT:
                 speech.say(self.name(c1))
         else:
             self.changed("p1", c1)
@@ -217,16 +218,36 @@ class HSF2(FightingGame):
 
 
 class Cyberbots(FightingGame):
-    """Cyberbots: Fullmetal Madness. Health, meter and timer from
-    fbneo-training-mode cybots.lua; pilot/robot select and rounds pending."""
+    """Cyberbots: Fullmetal Madness. Health, meter, timer from fbneo-training-
+    mode cybots.lua; select screens, robots and rounds from our tests
+    (2026-10-04)."""
 
     STATS = "CYBOTS"
+    # CHAR is the robot (VA) each player fights with, in the order of the
+    # robot name list in the exe; the match-up names robots, as the screen does.
+    ROSTER = [6, 9, 12, 15, 7, 11, 10, 16, 17, 8, 13, 20, 18, 19, 21, 14]
+    CHAR = (0xFF8511, 0xFF8911)
+    SPEAK_CHAR_AT_SELECT = False
     HEALTH = (0xFF81E5, 0xFF85E5)
     HEALTH_SIZE = 1
     FULL = 152
     METER = (0xFF8534, 0xFF8934)
     METER_FULL = 63
     TIMER = 0xFFEBA0
+    ROUNDS = (0xFF84AD, 0xFF88AD)
+    PILOT = 0xFF8529      # P1 pilot cursor, arcade order
+    PILOTS = [0, 2, 1, 5, 3, 4]  # arcade pilot -> STATS_CYBOTS_nn (Jin, Mary, ...)
+    BODY = 0xFFD5E0       # body type cursor: Blodia, Reptos, Fordy, Guldin
+    BODIES = [6, 9, 12, 15]
+
+    def select_extras(self):
+        msg = self.r.msg
+        pilot = self.a.read_byte(self.PILOT)
+        if self.changed("pilot", pilot) and pilot < len(self.PILOTS):
+            speech.say(msg.get(f"STATS_CYBOTS_{self.PILOTS[pilot]:02d}_NAME", ""))
+        body = self.a.read_byte(self.BODY)
+        if self.changed("body", body) and body < len(self.BODIES):
+            speech.say(msg.get(f"STATS_CYBOTS_{self.BODIES[body]:02d}_NAME", ""))
 
 
 # First 8 bytes of each game's program (arcade address 0) -> reader class.

@@ -102,7 +102,7 @@ def go(n, game):
         n.press("right", hold=0.15)
         win.wait_for(lambda: n.view().rows[0].value != b, 1)
     n.press("enter", hold=0.15)
-    time.sleep(9)
+    time.sleep(14)          # let the board boot past its logo
     n.press("ralt", hold=0.25)
     time.sleep(1.0)
     n.press("f1", hold=0.25)
