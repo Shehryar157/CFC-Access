@@ -52,21 +52,32 @@ def play_session(messages, game):
     arcade_reader.bind_keys(keys)
     screen = ocr.ScreenReader(game_window)
 
-    def read_story():
-        # Enter reads the text drawn by the arcade game (story, win quotes,
-        # endings), but only inside a game with no collection menu open:
-        # in menus Enter is the game's own confirm key.
-        if arcade_reader.game_reader is None or reader.top_view()[1] is not None:
-            return
+    def story_allowed():
+        # Only inside a game with no collection menu open (in menus Enter is
+        # the game's own confirm key), and not mid-fight (no text there).
         g = arcade_reader.game_reader
-        if hasattr(g, "round_started") and g.in_match():
-            return  # mid-fight there's no text to read
-        screen.read_screen()
-    keys.bind(0x0D, read_story)
+        if g is None or reader.top_view()[1] is not None:
+            return False
+        return not (hasattr(g, "round_started") and g.in_match())
+
+    def enter_pressed():
+        if story_allowed():
+            screen.read_screen()        # Enter: read the screen now
+    keys.bind(0x0D, enter_pressed)
+
+    def t_pressed():
+        # Alt+T: automatic story reading on/off. Plain T: round time.
+        if ctypes.windll.user32.GetAsyncKeyState(0x12) & 0x8000:
+            screen.toggle_auto()
+        else:
+            arcade_reader.speak_stat("time_left")
+    keys.bind("T", t_pressed)
     while game.is_running():
         reader.poll()
         arcade_reader.poll()
         keys.poll()
+        if screen.auto:
+            screen.poll(story_allowed())
         time.sleep(POLL_SECONDS)
     print("game closed")
 

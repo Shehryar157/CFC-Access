@@ -12,7 +12,7 @@ import asyncio
 import ctypes
 from ctypes import wintypes
 
-from PIL import Image, ImageOps
+from PIL import Image, ImageFilter, ImageOps
 
 user32 = ctypes.windll.user32
 gdi32 = ctypes.windll.gdi32
@@ -39,12 +39,27 @@ def capture(hwnd):
 
 
 def prepare(image):
-    """Make pixel-font text easier to recognise: grey, with the CRT-style
-    scanlines smoothed away, scaled to a size the recognizer likes."""
+    """The arcade games draw text in bright pixel fonts with gaps between
+    the letters, over busy backgrounds. Keep only the bright pixels, as
+    black text on white, and thicken the letters so the gaps close."""
+    grey = ImageOps.grayscale(image)
+    text = grey.point(lambda v: 0 if v > 170 else 255)
+    return text.filter(ImageFilter.MinFilter(3)).convert("RGBA")
+
+
+def prepare_soft(image):
+    """Second try for text that isn't bright: grey, scanlines smoothed."""
     image = ImageOps.grayscale(image)
     w, h = image.size
-    image = image.resize((w // 2, h // 2), Image.BILINEAR)   # blends scanlines
+    image = image.resize((w // 2, h // 2), Image.BILINEAR)
     return image.resize((w, h), Image.BILINEAR).convert("RGBA")
+
+
+ALWAYS_ON_SCREEN = {"FREE PLAY", "FREE", "PLAY", "PLEASE WAIT", "INSERT COIN", "PRESS START"}
+
+
+def _score(lines):
+    return sum(1 for l in lines for w in l.split() if len(w) >= 2 and w.strip(".,!?'\"").isalpha())
 
 
 async def _recognize(image):
@@ -83,34 +98,104 @@ def read_text(image):
     # Only the arcade picture: the collection puts artwork at both sides.
     w, h = image.size
     image = image.crop((int(w * 0.09), 0, int(w * 0.91), h))
-    return asyncio.run(_recognize(prepare(image)))
+    lines = asyncio.run(_recognize(prepare(image)))
+    if _score(lines) < 3:
+        other = asyncio.run(_recognize(prepare_soft(image)))
+        if _score(other) > _score(lines):
+            lines = other
+    # Labels the arcade shows all the time aren't part of the story.
+    return [l for l in lines if l.strip().upper() not in ALWAYS_ON_SCREEN]
+
+
+def looks_like_sentence(line):
+    """Story text is sentences; the rest of the screen (scores, timers,
+    logos) comes out as short fragments mixed with digits. Automatic
+    reading only speaks lines of three or more real words."""
+    words = [w.strip(".,!?'\"-:;()") for w in line.split()]
+    real = [w for w in words if len(w) >= 2 and w.isalpha()]
+    junk = [w for w in words if any(c.isdigit() for c in w) and any(c.isalpha() for c in w)]
+    return len(real) >= 3 and len(real) >= 0.6 * len(words) and not junk
 
 
 class ScreenReader:
-    """Enter (in a game, no menu open): read the text on the game screen aloud (story, win quotes,
+    """Reading the text on the game screen aloud (story, win quotes,
     endings...). Recognition takes about half a second, so it runs on a
-    background thread and the mod keeps polling meanwhile."""
+    background thread and the mod keeps polling meanwhile.
+
+    read_screen(): Enter in a game with no menu open.
+    Automatic reading (Alt+T toggles it): outside fights, the screen
+    is checked about once a second; text is spoken once it has stopped
+    changing (story text types itself out), and lines already spoken are
+    not repeated.
+    """
+    AUTO_INTERVAL = 1.0
 
     def __init__(self, hwnd_getter):
+        from . import settings
         self.hwnd_getter = hwnd_getter
         self.busy = False
+        self.auto = settings.get("auto_read", False)
+        self.last_check = 0.0
+        self.previous = []     # lines seen at the last automatic check
+        self.spoken = set()    # lines already read out automatically
 
-    def read_screen(self):
+    def _start(self, target):
         import threading
         if self.busy:
             return
         self.busy = True
-        threading.Thread(target=self._run, daemon=True).start()
+        threading.Thread(target=target, daemon=True).start()
+
+    def _lines(self):
+        hwnd = self.hwnd_getter()
+        image = capture(hwnd) if hwnd else None
+        return read_text(image) if image else []
+
+    def read_screen(self):
+        self._start(self._run)
 
     def _run(self):
         from . import speech
         try:
-            hwnd = self.hwnd_getter()
-            image = capture(hwnd) if hwnd else None
-            lines = read_text(image) if image else []
+            lines = self._lines()
             speech.say(". ".join(lines) if lines else "No text found")
         except Exception as e:
             print(f"screen reading failed: {e!r}")
             speech.say("Screen reading failed")
+        finally:
+            self.busy = False
+
+    def toggle_auto(self):
+        from . import settings, speech
+        self.auto = not self.auto
+        settings.set("auto_read", self.auto)
+        self.previous, self.spoken = [], set()
+        speech.say("Auto read on" if self.auto else "Auto read off")
+
+    def poll(self, allowed):
+        """Called every loop; allowed = in a game, no menu, not mid-fight."""
+        import time
+        if not (self.auto and allowed) or self.busy:
+            return
+        now = time.monotonic()
+        if now - self.last_check < self.AUTO_INTERVAL:
+            return
+        self.last_check = now
+        self._start(self._auto_run)
+
+    def _auto_run(self):
+        from . import speech
+        try:
+            lines = [l for l in self._lines() if looks_like_sentence(l)]
+            if not lines:
+                self.spoken.clear()       # screen cleared: new text may repeat
+            elif lines == self.previous:  # finished typing out
+                new = [l for l in lines if l not in self.spoken]
+                if new:
+                    speech.say(". ".join(new), interrupt=False)
+                    self.spoken.update(new)
+            self.previous = lines
+        except Exception as e:
+            print(f"auto read failed: {e!r}")
         finally:
             self.busy = False
